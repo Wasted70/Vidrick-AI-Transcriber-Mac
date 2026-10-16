@@ -1,0 +1,234 @@
+MAC STARTER VERIFICATION - OCTOBER 14, 2026
+
+Scope: isolated development foundation, version 0.1.0-dev.
+Execution host: Windows, Python 3.12.14. No native Mac was available.
+
+PASSED
+- 23 standard-library unit tests, including simulated Mac arm64, Intel/Rosetta,
+  Windows arm64, Python/Tk requirements, and GUI import/launch boundaries.
+- Syntax parsing of all four Mac package modules.
+- Actual command-line --help works without opening a window.
+- Actual --check and --preview reject this Windows host with exit code 2.
+- Independent review found no blocking issues for this limited starter.
+
+WINDOWS PROTECTION
+Before and after SHA-256, filename, and size comparisons matched for all 128
+top-level desktop source, build/installer script, and requirements files in:
+C:\Vidrick_AI_Transcriber_4.3 - Main
+
+The comparison covered .py, .spec, .iss, .bat, .ps1, and requirements*.txt files.
+It was not an exhaustive rehash of every asset or packaged Windows binary.
+All new or edited files for this task were confined to the separate Mac folder.
+No Windows app/build was run; no Windows project modules were imported.
+No packages installed, source files copied, accounts contacted, models fetched,
+hosted build services configured, or releases published.
+
+NOT YET VERIFIED / NOT IMPLEMENTED
+- Actual native Mac preflight and Tk window/file-picker behavior.
+- macOS release compatibility, AI dependencies, or CPU/GPU performance.
+- Transcription, speaker identification, exports, licensing, or updates.
+- Mac app bundling, installation, signing, or notarization.
+
+The test suite checks starter behavior, not the full Vidrick application.
+The next manual check is running --check and --preview on an M-series Mac.
+See README.txt for commands and limitations.
+
+WINDOWS DEVELOPMENT PREVIEW ADDITION - OCTOBER 14, 2026
+
+Added explicit --windows-preview and Launch_Windows_Preview.cmd, entirely in
+the Mac project. This is the small Mac starter UI running on Windows, not the
+production Windows app, a Mac emulator, or a working transcription release.
+
+Verification:
+- All 37 unit tests passed (23 original plus 14 Windows-preview tests).
+- Mocked UI construction verifies the visible Windows-preview disclaimer,
+  readonly path display, disabled transcription button, and file-picker
+  callback/cancellation behavior. File reads are blocked during callback tests.
+- The actual Windows environment passes the Windows-preview requirements.
+- Native --check and --preview still reject Windows with exit code 2.
+- Python's Tk module imports and Tcl 8.6.12 initializes without opening a GUI.
+- Syntax parsing passed for all six package/test modules.
+- Launcher interpreter path exists; launcher code independently reviewed.
+- A fresh before/after comparison matched all 128 protected Windows reference
+  source/build/requirements files listed in the original verification scope.
+
+No real preview window or file dialog was opened during this verification.
+Desktop inspection controls were unavailable in this session. The tests use
+mock UI objects, not screenshots or real desktop input. Actual double-click
+launch and visual layout still need the user's manual check. Native Mac
+validation remains outstanding as before.
+
+All task writes stayed in C:\Vidrick_AI_Transcriber_Mac. No production app,
+customer file, account, Windows project environment, or release was changed.
+
+WINDOWS-STYLE VISUAL PREVIEW - OCTOBER 14, 2026
+
+Read-only design references: the Windows app's GLASS palette/build methods
+and existing website screenshots. No Windows module was imported or run.
+No original app source file or image asset was copied into the Mac folder.
+
+Implemented independently using standard-library Tk/ttk:
+- Navy/cyan palette, V header, rounded cards, and five navigation tabs.
+- Files/settings split with multi-file selection, remove/clear, and scrollable
+  temporary settings. The header Settings button opens that settings pane.
+- Editor scratchpad, Insights placeholders, empty History, and disconnected
+  About & Updates/license controls. No generated example results are claimed.
+- Clearly labeled Windows preview, no fake CUDA or drag/drop capability,
+  disabled processing/export/account/update/output actions.
+- Initial window size constrained for common laptop screens.
+
+Verification:
+- All 50 unit tests passed; syntax parsing passed for all eight Python files.
+- Tests cover native/Windows guards, tab names, preview labels, no-I/O file
+  state, disabled actions, callback cancellation, and laptop-size geometry.
+- A hidden, in-process native Windows Tk smoke test constructed all five pages
+  with the clam theme without Tcl errors. It switched tabs, used a MOCK file
+  dialog for a nonexistent path, removed that selection, typed temporary text
+  into the scratchpad, and checked all six unavailable actions were disabled
+  with no callbacks. The hidden test window was destroyed afterward.
+- This was a widget-construction/control test, NOT a screenshot or visual
+  inspection, and NOT an actual native file-dialog interaction or Mac test.
+- A fresh before/after SHA-256, size, and filename comparison matched all 128
+  protected Windows source/build/requirements files in the original scope.
+
+All edits stayed in the Mac project. No dependencies were installed and no
+production app, website, portal, account, model, or installer was changed.
+Close/reopen the Mac preview using Launch_Windows_Preview.cmd to review it.
+Actual visual review on Windows and native Mac testing remain outstanding.
+
+APPLE-STYLE INTERFACE REVISION - OCTOBER 16, 2026
+
+The user reviewed the previous design and requested an Apple-oriented UI.
+Rebuilt the Mac preview's presentation independently within this folder:
+- Light neutral palette, blue accents, navigation sidebar, compact toolbar,
+  original line icons, and rounded white content surfaces.
+- Files workspace with a centered empty state and a separate scrollable
+  transcription settings pane. All five existing sections remain available.
+- Simplified Editor, Insights, History, and About layouts; visible keyboard
+  focus and keyboard scrolling for the settings canvas.
+- Platform-default font and native Aqua ttk controls when available on macOS.
+  Custom Windows-preview colors are not applied to native Aqua controls.
+  This is a Tk interface revision, not SwiftUI, AppKit, or Liquid Glass.
+
+Verification on Windows:
+- All 50 existing unit tests passed after the final source change using the
+  bundled Python with -E -B and an explicit Mac-folder working directory.
+- Syntax parsing passed for all eight Python package/test files.
+- A real in-process Tk smoke check constructed every page, switched sections,
+  exercised empty/selected file states with synthetic paths and a mocked file
+  dialog, removed/cleared selections, and used the temporary scratchpad.
+- All six unavailable action buttons remained disabled without callbacks.
+- A mapped transparent Tk window at the 940x640 minimum size reported no
+  widget overflow outside the intentionally scrollable settings contents.
+  Its settings viewport remained usable (250x253 on this Windows runtime).
+- Opened the actual Windows preview and visually inspected all five sections
+  using window screenshots. Sidebar navigation, the Settings shortcut, and
+  settings scrolling worked. No actual recording or file picker was used.
+- Independent code review identified an Aqua color-contrast risk; fixed by
+  retaining the native theme's control colors and state maps on macOS.
+
+All source/documentation changes and verification outputs stay in the Mac
+folder. No Windows production files were edited, imported, built, or tested.
+No dependencies, models, account services, licensing, or releases were added.
+Native Mac appearance, keyboard behavior, dark appearance, file dialogs, and
+compatibility still require an M-series Mac. User review of this revision is
+the next design step.
+
+ROUNDED / TRANSLUCENT REVISION - OCTOBER 16, 2026
+
+The user approved the Apple-style direction and requested a more bubbly
+appearance with a little transparency.
+
+- Larger rounded cards with soft shadows and highlights; inset toolbar,
+  rounded sidebar selections, cooler pale surfaces, and a circular file badge.
+- Rounded ttk buttons in the Windows preview use small antialiased PNG
+  surfaces generated entirely in memory with Python's standard library.
+  Native Aqua controls and semantic colors remain preferred on macOS.
+- A toolbar Transparency checkbox switches between 0.97 and 1.0 window
+  alpha. Exceptions and silently unsupported alpha fall back to opaque mode
+  with the checkbox disabled. This is whole-window opacity, not backdrop blur.
+
+Verification:
+- All 50 existing unit tests passed with the bundled Python using -E -B.
+- Syntax parsed for all nine package/test Python files.
+- Real Tk constructed the rounded ttk image elements and all five sections.
+- Verified transparency on/off and both unsupported modes (Tcl error and
+  ignored alpha) in-process. The live toolbar toggle restored opaque mode.
+- Real Tk checks retained six unavailable action buttons without callbacks,
+  path-only file selection/clearing, and the temporary Editor scratchpad.
+- The final 940x640 layout check found no overflow outside the intentionally
+  scrollable settings content. The file empty state was tightened to fit.
+- Visually inspected the live Windows preview's pill buttons, sidebar,
+  rounded panels, opacity, and opaque mode. No screenshots were saved because
+  whole-window transparency can show unrelated windows behind the preview.
+- Independent review caught a zero-height stretch region in the button
+  artwork; surfaces now measure 64x40 with 18px slicing borders, leaving a
+  nonempty center. Actual Mac rendering and high-DPI Mac behavior remain
+  unverified.
+
+All edits stayed in the Mac folder. No packages, models, services, production
+Windows files, website/portal files, or customer recordings were changed.
+The effect is optional and temporary; native Mac testing remains outstanding.
+
+FILE LIST / KEYBOARD USABILITY PASS - OCTOBER 16, 2026
+
+- File rows now emphasize filenames. A selectable, read-only details area
+  shows original paths for the selected rows, including same-name files in
+  different folders. Path parsing uses pure platform-specific path classes;
+  it does not access the selected files or reinterpret Mac backslashes.
+- Remove is enabled only with selected rows; Clear only with a nonempty list.
+  New additions are selected, duplicate additions and cancellation preserve
+  selection, and removal chooses an adjacent remaining row or the empty CTA.
+- Window-scoped Command+O / Command+, shortcuts on Mac, Control equivalents
+  in the Windows preview. Select All and Delete/Backspace act on file rows
+  only when the list has focus. The file picker rejects reentrant calls.
+- Inactive pages are unmapped so Tab cannot enter hidden controls. Disabled
+  controls are skipped. Path details support forward/reverse Tab traversal;
+  settings automatically scroll to reveal the focused control.
+
+Verification on Windows:
+- All 55 unit tests passed with the bundled Python using -E -B, including
+  new no-I/O path-name, action-state, dialog-guard, and shortcut-scope tests.
+- Syntax parsing passed for all nine package/test Python files.
+- Real Tk event dispatch verified Ctrl+O from the Editor without inserting
+  text, Ctrl+, opening settings, list Ctrl+A/Delete/Backspace, cancellation,
+  duplicate additions, adjacent selection, read-only details, and isolation
+  from Editor text editing. Dialog results were mocked with synthetic paths.
+- Real Tab/Shift+Tab verified both directions out of path details. Tab through
+  all 12 enabled settings kept each focused control inside the viewport;
+  returning to the first setting scrolled back. Disabled controls were skipped.
+- All five pages and empty/populated lists fit the 940x640 minimum without
+  widget overflow outside intentionally scrollable settings contents.
+- Live screenshot inspection confirmed filename rows, full paths, multi-row
+  selection, removal, and the empty state. Actual Control+A and Delete input
+  worked in the temporary review window. No customer files were selected.
+- Independent review identified reverse-Tab and off-screen settings-focus
+  issues; both were corrected and checked with real Tk.
+
+All task edits and commands remained in the separate Mac project. No Windows
+production app/source/build, website, portal, account, or customer recording
+was accessed or changed. No packages or services were added. This remains an
+offline UI prototype; native Mac appearance, Command shortcuts, file picker,
+and compatibility still need validation on an M-series Mac.
+
+GITHUB TESTING WORKFLOW - OCTOBER 16, 2026
+
+The user requested that this Mac project be connected to their newly created
+Vidrick-AI-Transcriber-Mac repository so a friend can test ongoing work.
+
+- Confirmed Git access and GitHub repository metadata for
+  https://github.com/Wasted70/Vidrick-AI-Transcriber-Mac.
+  It was empty at setup, public, and configured with main as its default branch.
+- Initialized Git only in this Mac folder, with origin pointing to that exact
+  repository. No Windows repository or global Git configuration was changed.
+- AGENTS.md records standing authorization to test, review, commit, and push
+  completed Mac development tasks. No timer, file watcher, hosted build, or
+  app self-updater was installed. Push failures must be reported explicitly.
+- README.txt now includes Mac clone, fast-forward-only pull, preflight,
+  preview launch, and feedback instructions. No new runtime dependency.
+- Added .gitattributes for consistent text endings across Mac and Windows.
+- All 55 tests passed before preparing the initial commit. Only the Mac
+  source, tests, documentation, launcher, and Git rules are included.
+
+This publishes the existing source preview for testing, not a signed Mac
+application or a transcription release. Native Mac validation is still due.
