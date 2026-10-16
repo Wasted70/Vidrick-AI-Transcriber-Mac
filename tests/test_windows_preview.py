@@ -181,11 +181,12 @@ class WindowsCommandTests(unittest.TestCase):
             for item in fake_tk.Button.call_args_list + fake_ttk.Button.call_args_list
             if "text" in item.kwargs
         }
-        for title in ("Start Transcription - unavailable",
-                      "Manage Account", "Check for Updates", "Not connected in this preview"):
+        for title in ("Manage Account", "Check for Updates"):
             with self.subTest(button=title):
                 self.assertEqual(buttons[title].get("state"), "disabled")
                 self.assertFalse(buttons[title].get("command"))
+        ui.pipeline.start_button.configure.assert_any_call(state="disabled")
+        self.assertFalse(ui.pipeline.start())
         for title in ("Open…", "Save", "Save As…"):
             with self.subTest(editor_button=title):
                 self.assertNotEqual(buttons[title].get("state"), "disabled")

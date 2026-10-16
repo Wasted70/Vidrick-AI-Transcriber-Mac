@@ -3,7 +3,8 @@ Prototype 0.1.0-dev | Started October 14, 2026
 
 WHAT THIS IS
 A small, independent foundation for an M-series Mac version. It is not a
-Mac release of Vidrick 4.3.1, an installer, or a working transcriber yet.
+Mac release of Vidrick 4.3.1 or an installer. The local development pipeline
+is implemented, but actual inference and native Mac behavior are unverified.
 Windows remains the primary product. Nothing here changes the Windows app.
 
 WHAT WORKS AT THIS STAGE
@@ -18,22 +19,26 @@ WHAT WORKS AT THIS STAGE
   Windows preview uses a separately styled Tk theme. Native rendering still
   needs Mac testing; this is not SwiftUI or a Liquid Glass implementation.
 - Multi-file browsing with clear filenames, selectable full-path details,
-  selection-aware remove/clear controls, and temporary settings selections.
+  selection-aware remove/clear controls, and session-only settings.
 - Keyboard shortcuts for adding/selecting/removing files and opening settings.
 - A local transcript Editor with .txt Open/Save/Save As, find and replace,
   undo/redo, unsaved-change protection, word/character counts, and text sizing.
+- One-recording local transcription on native arm64 macOS using an existing
+  whisper.cpp engine/model, with genuine engine progress, cancellation, and
+  a finished transcript that opens as an unsaved document in the Editor.
 - Clearly labeled Insights, History, and About & Updates placeholder panels.
 - A separately labeled Windows development preview of that same small UI.
 - A separate future Mac-preview data path. It is calculated, not created.
 - Standard-library unit tests; no pip install or AI dependencies required.
 
 WHAT DOES NOT HAPPEN
-No recording is read, transcribed, uploaded, or copied. A selected file path
-in the recording list is shown only in the preview window and is not saved.
+Choosing a recording only adds its path to the list. On the Mac, Start reads
+the one selected recording and may create a temporary converted audio file.
+The app does not upload recordings or download engines/models. The Windows
+UI preview never starts transcription or reads selected recording contents.
 The Editor reads and writes only the .txt files you explicitly open or save.
-There are no models,
-production account connections, license requests, analytics, or updates.
-The transcription button is deliberately disabled. No Windows source,
+There are no bundled models, production account connections, license
+requests, analytics, or updates. No Windows source,
 settings, credentials, release files, or dependencies were copied here.
 
 TRY THE PREVIEW ON YOUR WINDOWS PC
@@ -106,11 +111,11 @@ whole window, including text; it is not background blur or native Liquid
 Glass. Rounded button artwork is generated in memory using the standard
 library; no assets or extra dependencies are downloaded. Aqua keeps its
 native button rendering on macOS.
-Transcription, formatted exports, recording output-folder selection, account
-management, and updates remain disabled. Drag and drop is not implemented.
+Formatted exports, recording output-folder selection, account management,
+and updates remain unavailable. Drag and drop is not implemented.
 Recording paths and settings disappear when the preview closes; only text
 explicitly saved from the Editor persists.
-This is not a Mac emulator or a functional port of the Windows app. Appearance,
+This is not a Mac emulator or a full port of the Windows app. Appearance,
 installation, Apple-chip performance, and Mac compatibility still need a Mac.
 It never uses the installed Windows Vidrick app or its project, data, models,
 accounts, or settings. The -E flag ignores Python environment overrides, and
@@ -200,6 +205,58 @@ Running --preview on Windows is intentionally refused without opening a window.
 Use the explicit --windows-preview mode instead. That flag does not make the
 default Mac preflight pass, and it is refused on macOS/Linux.
 
+LOCAL TRANSCRIPTION DEVELOPMENT WORKFLOW
+This is a development integration, not a licensed product release. No friend
+testing, packaging, model distribution, or licensing integration is enabled
+by a push. Production licensing must be integrated before distribution.
+
+On a native arm64 Mac, provide your own installed whisper.cpp whisper-cli
+executable and a compatible local GGML .bin model. Use a multilingual model
+for non-English languages or translation. The adapter was written against
+the v1.9.5 CLI protocol; it has not yet been run with a real model on a Mac:
+https://github.com/ggml-org/whisper.cpp/tree/v1.9.5
+https://github.com/ggml-org/whisper.cpp/blob/v1.9.5/examples/cli/cli.cpp
+
+In Transcribe, scroll down to Local engine setup and choose the executable
+and model. Select FFmpeg as well for MP3, M4A, MP4, MOV, FLAC, OGG, AAC, WMA,
+WebM, MKV, AIFF, or WAV needing conversion. A nonempty 16-bit mono PCM WAV
+at 16 kHz can go directly to the engine. Only local regular files are accepted.
+FFmpeg inputs use the selected extension's media demuxer with network
+protocols excluded; conversion produces a temporary mono 16 kHz PCM WAV.
+https://ffmpeg.org/ffmpeg.html
+https://ffmpeg.org/ffmpeg-protocols.html
+
+Add recordings, select exactly one row, choose language/task and whether to
+include timestamps, then Transcribe selected file. The list is a workspace,
+not an automatic batch queue. The selected recording and settings are fixed
+for that run. File additions/removal and settings lock while it runs; the
+Editor remains usable. The engine is invoked with GPU use disabled (-ng).
+There are no simulated transcripts or timer-based percentages in the app.
+
+Preparation and model loading show indeterminate progress. Percentages come
+from whisper-cli callbacks during inference; 100% requires successful output
+validation and cleanup. Cancel stops the local process and clears temporary
+files before another job can start. Closing during a run offers cancellation
+and waits without freezing the UI. Errors remain available under Details.
+
+A finished transcript opens in the Editor with the recording's name and is
+not saved automatically. Timestamped output uses [HH:MM:SS.mmm --> ...]. If
+existing edits cannot be replaced, or a file dialog is already open, the result
+waits under Transcribe (marked with a dot). Open in Editor retries the handoff.
+Open or explicitly discard that result before starting another job. Closing
+checks both the pending result and Editor edits. An empty engine result is
+shown as 'no speech found' without replacing the Editor document.
+
+Temporary audio, JSON, and bounded diagnostic logs stay under the project's
+ignored runtime-output/job-* directory and are removed when the job ends.
+If a process cannot be confirmed stopped, its job files are kept and Details
+explains where they are. Cleanup failures keep the window open with an error.
+An OS/app crash may also leave temporary files; there is no crash recovery.
+There is no automatic history, batch processing, playback, speaker separation,
+or Word/SRT/VTT export yet. Engine paths/settings last only for this session.
+Store any developer tools/models in local-tools/ and models/ (both ignored)
+if keeping them inside this project. Never commit recordings or model files.
+
 SEPARATION FROM WINDOWS
 Windows reference: C:\Vidrick_AI_Transcriber_4.3 - Main
 Mac work:          C:\Vidrick_AI_Transcriber_Mac
@@ -210,9 +267,10 @@ Windows folder. Future shared fixes should be deliberately ported and tested
 after Windows work, not automatically copied in either direction.
 
 NEXT SMALL MILESTONE
-Develop a one-recording transcription workflow with progress, cancellation,
-and a result that opens in the Editor. Native Mac validation will follow when
-the owner is ready: preflight, window, Command shortcuts, file picker, focus,
-and closing behavior. Separately scope a CPU transcription experiment,
-Mac dependencies, and licensing integration. Packaging, signing, notarization,
-hosted builds, GPU acceleration, and packaged app releases are later work.
+When the owner is ready, validate on an actual M-series Mac: native preflight,
+Aqua rendering, Command shortcuts, local engine/model setup, WAV and converted
+media, real progress, cancellation during conversion/model loading/inference,
+and saving the final transcript. Check that cancelling or closing leaves no
+child process or temporary job files. Also check no-speech and failure recovery.
+Licensing integration, packaging, signing, notarization, hosted builds, GPU
+acceleration, and packaged app releases are separately scoped later work.

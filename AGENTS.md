@@ -6,14 +6,15 @@
 - Do not edit, build, test, install packages into, publish from, or create caches in the Windows project. Never import its modules or add it to `sys.path`.
 - Keep all code, tests, outputs, environments, and build work inside this Mac folder. No links to shared writable source or automatic two-way synchronization.
 - Do not copy whole project trees, customer recordings, account state, secrets, signing keys, installers, CUDA libraries, portal code, or website code here.
-- Current scope is an offline preflight, non-transcribing UI preview, and local plain-text transcript Editor. The user authorized opening/saving explicitly chosen .txt files, find/replace, undo/redo, unsaved-change protection, word count, and text sizing. Recording selections remain path-only; no recording contents are read. No model downloads, licensing requests, account activation, automatic updates, telemetry, or production services.
-- A future functional port must preserve licensing enforcement; this preview has no transcription engine and is not a licensing bypass.
+- Current scope is an offline preflight, local plain-text Editor, and a one-recording development transcription pipeline with progress, cancellation, and safe Editor handoff. The user authorized reading the explicitly selected recording when Start is pressed on native arm64 macOS. Use an existing local whisper.cpp executable/model and optional FFmpeg; never download models automatically. No licensing requests, account activation, automatic updates, telemetry, or production services.
+- This independent development integration is not a packaged/licensed Vidrick product. A distributable functional port must preserve licensing enforcement; do not port or bypass production licensing or imply that the development pipeline is release-ready.
 - Native M-series/arm64 macOS is the initial target. Intel/Rosetta and Apple GPU acceleration are outside the current scope.
 - The user authorized a separate `--windows-preview` UI development mode in this Mac folder. It must be explicitly selected, Windows-only, visibly labeled, non-transcribing, and disconnected from the production Windows app. Preserve the native-Mac guards on `--check` and `--preview`.
 - Do not claim Mac compatibility, benchmark results, or release readiness from Windows-based or mocked tests. Native Mac testing is still required.
 - Do not push, publish, purchase services, or configure hosted builds without a user request covering that work.
 - Run tests with `python -B -m unittest discover -s tests -v`. Do not install dependencies globally.
 - File-I/O tests must use synthetic files under this project's ignored `test-output/`, never customer recordings. For Editor changes, also run the opt-in real Tk tests with `VIDRICK_TEST_TK=1` in a desktop session. Native Mac behavior remains unverified until actually checked on a Mac.
+- Pipeline intermediates and diagnostics belong only in ignored `runtime-output/`, in a private per-job directory cleaned after success, cancellation, or failure. Keep tools/models in ignored `local-tools/` and `models/` if storing them here. Tests may inject synthetic backends/subprocesses on Windows, but must not enable real transcription in the Windows preview. Workers must never call Tk; cancellation and close must wait asynchronously for worker cleanup.
 
 ## GitHub development updates
 

@@ -21,8 +21,18 @@ class EditorLifecycleTests(unittest.TestCase):
         self.path = Path(__file__).resolve().parents[1] / "test-output" / "synthetic.txt"
         editor.document = None if untitled else LoadedTranscript(self.path, saved, "utf-8", "\n", "original-fingerprint")
         editor.saved_text = saved
+        editor.suggested_name = None
         editor.busy = False
+        editor.refresh_id = None
         editor.active_match = ("1.0", "1.4")
+        editor.find_panel = MagicMock()
+        editor.find_text = MagicMock()
+        editor.replace_text = MagicMock()
+        editor.match_case = MagicMock()
+        editor.match_label = MagicMock()
+        editor.search_visible = True
+        editor.matches = [editor.active_match]
+        editor.matches_limited = True
         editor.refresh = MagicMock()
         editor.text = MagicMock()
         editor.text.value = content
@@ -87,6 +97,7 @@ class EditorLifecycleTests(unittest.TestCase):
 
     def test_successful_open_sets_clean_baseline_and_resets_undo_history(self):
         editor = self.make_editor(content="Original")
+        editor.suggested_name = "Previous recording.txt"
         new_document = LoadedTranscript(self.path, "New transcript\n", "utf-8-sig", "\r\n", "new-fingerprint")
         editor.ui.filedialog.askopenfilename.return_value = str(self.path)
         with patch("vidrick_mac.editor.read_transcript", return_value=new_document):
@@ -97,8 +108,105 @@ class EditorLifecycleTests(unittest.TestCase):
         self.assertFalse(editor.dirty)
         self.assertIsNone(editor.active_match)
         self.assertFalse(editor.busy)
+        self.assertIsNone(editor.suggested_name)
         editor.text.edit_reset.assert_called_once()
         editor.ui.select_tab.assert_called_once_with("Editor")
+
+    def test_finished_transcript_is_unsaved_normalized_and_clears_previous_search(self):
+        editor = self.make_editor(content="Original")
+        self.assertTrue(editor.load_transcription("Hello 🌍\r\nAnother line\rEnd", "Interview.txt"))
+        self.assertEqual(editor.content(), "Hello 🌍\nAnother line\nEnd")
+        self.assertIsNone(editor.document)
+        self.assertEqual(editor.saved_text, "")
+        self.assertEqual(editor.suggested_name, "Interview.txt")
+        self.assertTrue(editor.dirty)
+        self.assertFalse(editor.busy)
+        self.assertFalse(editor.search_visible)
+        self.assertEqual(editor.matches, [])
+        self.assertFalse(editor.matches_limited)
+        self.assertIsNone(editor.active_match)
+        editor.find_text.set.assert_called_once_with("")
+        editor.replace_text.set.assert_called_once_with("")
+        editor.match_case.set.assert_called_once_with(False)
+        editor.find_panel.grid_remove.assert_called_once()
+        editor.text.edit_reset.assert_called_once()
+        editor.ui.select_tab.assert_called_once_with("Editor")
+        editor.ui.messagebox.askyesnocancel.assert_not_called()
+
+    def test_cancelled_finished_handoff_preserves_current_document_and_search(self):
+        editor = self.make_editor()
+        before = self.snapshot(editor)
+        editor.suggested_name = "Keep this name.txt"
+        editor.ui.messagebox.askyesnocancel.return_value = None
+        self.assertFalse(editor.load_transcription("Finished result", "Recording.txt"))
+        self.assert_preserved(editor, before)
+        self.assertEqual(editor.suggested_name, "Keep this name.txt")
+        self.assertTrue(editor.search_visible)
+        editor.find_text.set.assert_not_called()
+        editor.text.edit_reset.assert_not_called()
+        editor.ui.select_tab.assert_not_called()
+
+    def test_finished_handoff_discard_replaces_only_after_explicit_choice(self):
+        editor = self.make_editor()
+        editor.ui.messagebox.askyesnocancel.return_value = False
+        self.assertTrue(editor.load_transcription("Finished result"))
+        self.assertEqual(editor.content(), "Finished result")
+        self.assertTrue(editor.dirty)
+        self.assertIn("opening the finished transcript", editor.ui.messagebox.askyesnocancel.call_args.args[1])
+
+    def test_finished_handoff_failed_or_cancelled_save_preserves_work(self):
+        for failure in ("cancel", "error"):
+            with self.subTest(failure=failure):
+                editor = self.make_editor(saved="", untitled=True)
+                before = self.snapshot(editor)
+                editor.ui.messagebox.askyesnocancel.return_value = True
+                editor.ui.filedialog.asksaveasfilename.return_value = "" if failure == "cancel" else str(self.path)
+                with patch("vidrick_mac.editor.write_transcript", side_effect=TranscriptError("Disk full")) as write:
+                    self.assertFalse(editor.load_transcription("Finished result"))
+                self.assertEqual(write.call_count, int(failure == "error"))
+                self.assert_preserved(editor, before)
+                editor.text.edit_reset.assert_not_called()
+
+    def test_finished_handoff_saves_previous_document_before_new_unsaved_result(self):
+        editor = self.make_editor()
+        previous = editor.document
+        old_text = editor.content()
+        editor.ui.messagebox.askyesnocancel.return_value = True
+        saved = LoadedTranscript(self.path, old_text, "utf-8", "\n", "saved-fingerprint")
+        with patch("vidrick_mac.editor.write_transcript", return_value=saved) as write:
+            self.assertTrue(editor.load_transcription("Finished result", "Recording.txt"))
+        write.assert_called_once_with(self.path, old_text, previous=previous)
+        self.assertIsNone(editor.document)
+        self.assertEqual(editor.content(), "Finished result")
+        self.assertEqual(editor.saved_text, "")
+        self.assertTrue(editor.dirty)
+
+    def test_finished_transcript_save_uses_suggested_name_and_becomes_clean(self):
+        editor = self.make_editor(content="Original")
+        self.assertTrue(editor.load_transcription("Finished result", "Recording.txt"))
+        editor.ui.filedialog.asksaveasfilename.return_value = str(self.path)
+        saved = LoadedTranscript(self.path, editor.content(), "utf-8", "\n", "new-fingerprint")
+        with patch("vidrick_mac.editor.write_transcript", return_value=saved):
+            self.assertTrue(editor.save())
+        self.assertEqual(editor.ui.filedialog.asksaveasfilename.call_args.kwargs["initialfile"], "Recording.txt")
+        self.assertFalse(editor.dirty)
+        self.assertIs(editor.document, saved)
+
+    def test_finished_handoff_blocks_reentrant_document_actions(self):
+        editor = self.make_editor()
+
+        def nested_actions(*_, **__):
+            self.assertTrue(editor.busy)
+            self.assertFalse(editor.load_transcription("Nested result"))
+            self.assertFalse(editor.open())
+            self.assertFalse(editor.save())
+            self.assertFalse(editor.confirm_close())
+            return False
+
+        editor.ui.messagebox.askyesnocancel.side_effect = nested_actions
+        self.assertTrue(editor.load_transcription("Outer result"))
+        self.assertEqual(editor.content(), "Outer result")
+        editor.ui.messagebox.askyesnocancel.assert_called_once()
 
     def test_cancelled_save_as_keeps_document_identity_and_unsaved_edits(self):
         editor = self.make_editor()
@@ -224,6 +332,7 @@ class EditorLifecycleTests(unittest.TestCase):
                     self.assertFalse(editor.save())
                     self.assertFalse(editor.save_as())
                     self.assertFalse(editor.confirm_close())
+                    self.assertFalse(editor.load_transcription("Finished result"))
                 read.assert_not_called()
                 write.assert_not_called()
                 self.assertEqual(editor.ui.filedialog.mock_calls, [])

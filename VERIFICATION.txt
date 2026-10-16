@@ -1,5 +1,8 @@
 MAC STARTER VERIFICATION - OCTOBER 14, 2026
 
+This file records successive development milestones. See the final entry for
+the current pipeline scope; earlier 'not implemented' notes describe that date.
+
 Scope: isolated development foundation, version 0.1.0-dev.
 Execution host: Windows, Python 3.12.14. No native Mac was available.
 
@@ -278,3 +281,55 @@ dependency, service, account integration, or installer was added. All changes
 remain in the isolated Mac project. Native Mac rendering, physical Command
 keys, file dialogs, filesystem semantics, and Quit behavior still need Mac
 validation when the owner is ready for that stage.
+
+LOCAL TRANSCRIPTION PIPELINE - OCTOBER 16, 2026
+
+Implemented a one-recording development pipeline for native arm64 macOS.
+The adapter targets an existing local whisper.cpp v1.9.5 whisper-cli/model
+and optional FFmpeg. No engines, models, packages, or customer media were
+installed, downloaded, executed, or added to Git during this work.
+
+Implemented:
+- Immutable selected recording/settings, local file validation, optional
+  conversion to mono 16 kHz PCM WAV, and CPU-mode CLI invocation (-ng).
+- Worker-owned subprocesses with a bounded diagnostic stream and genuine
+  whisper-cli progress; preparation/loading remain indeterminate.
+- Asynchronous cancellation, process termination/escalation, and per-job
+  cleanup. Stop/cleanup errors remain failures and keep the window open.
+- Validated JSON segments with optional timestamps and an 8 MiB text limit.
+- Finished result handoff into a new unsaved Editor document. Existing edits,
+  busy dialogs, cancelled handoffs, and failed saves retain the pending result.
+- Close protection for active jobs, pending results, and Editor changes.
+- Updated settings and status UI; unsupported placeholder controls removed.
+- Windows UI mode remains non-transcribing, with a second guard in the backend.
+
+Verification on Windows / Python 3.12.14:
+- Full suite with VIDRICK_TEST_TK=1: 162 tests run, 159 passed, 3 skipped.
+  The skipped tests require POSIX permissions, FIFO, or process-group behavior.
+- 24 backend tests include real Python subprocess protocol fixtures for
+  progress, conversion arguments, cancellation/reaping, error paths, output
+  validation, fresh retries, and temporary-file cleanup/retention.
+  These fixtures do not perform inference or decode real media.
+- 14 job-manager tests cover bounded/coalesced events, duplicate starts,
+  cancellation/completion races, worker exit, and cleanup-error preservation.
+- 19 opt-in real Tk pipeline tests cover state controls, Editor handoff, retry,
+  close confirmation nested-event-loop races, and asynchronous cancellation.
+- 34 Editor lifecycle/Tk tests pass, including new transcript handoff tests.
+- All 20 package/test Python files parsed successfully; git diff checks clean.
+- Actual --help reflects local setup; --check and --preview both reject the
+  Windows host with exit code 2, without opening a native Mac window.
+- Visual inspection of the opaque synthetic Windows UI at 940x640 passed.
+  Separate widget bounds checks covered empty, running, pending, cancelling,
+  cancelled, and failed states with a long filename. No clipping or Tk errors.
+- Independent review found layout and close/cleanup race issues; these were
+  fixed and rechecked before the development push.
+
+Limits:
+No actual Apple Silicon machine, Aqua interaction, real whisper.cpp inference,
+real FFmpeg media conversion, native process-group cancellation, CPU timing,
+or native file dialogs were verified. No app bundle, installer, license flow,
+signing, notarization, hosted build, release, or friend test was produced.
+Runtime tools/models must be selected locally on a Mac; setup is session-only.
+History, batch jobs, playback, speakers, and formatted exports remain future work.
+All source/test/output work stayed in C:\Vidrick_AI_Transcriber_Mac. The Windows
+production project, accounts, portal, website, and releases were not modified.

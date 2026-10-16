@@ -11,6 +11,7 @@ class TranscriptEditor:
         self.ui, self.root, self.tk, self.ttk = ui, ui.root, ui.tk, ui.ttk
         self.document = None
         self.saved_text = ""
+        self.suggested_name = None
         self.busy = False
         self.refresh_id = None
         self.search_visible = False
@@ -139,7 +140,7 @@ class TranscriptEditor:
     def refresh(self):
         self.cancel_refresh()
         text = self.content()
-        name = self.document.path.name if self.document else "Untitled.txt"
+        name = self.document.path.name if self.document else self.suggested_name or "Untitled.txt"
         if len(name) > 70:
             name = name[:45] + "…" + name[-20:]
         dirty = text != self.saved_text
@@ -156,7 +157,7 @@ class TranscriptEditor:
     def _confirm_changes(self, action):
         if not self.dirty:
             return True
-        name = self.document.path.name if self.document else "Untitled.txt"
+        name = self.document.path.name if self.document else self.suggested_name or "Untitled.txt"
         answer = self._messages().askyesnocancel(
             "Save changes?", f"Save changes to {name} before {action}?",
             detail="Choose Yes to save, No to discard your changes, or Cancel to keep editing.",
@@ -194,7 +195,48 @@ class TranscriptEditor:
             self.text.edit_modified(False)
             self.document = document
             self.saved_text = document.text
+            self.suggested_name = None
             self.active_match = None
+            self.text.mark_set("insert", "1.0")
+            self.text.yview_moveto(0)
+            self.ui.select_tab("Editor")
+            self.text.focus_set()
+            self.refresh()
+            return True
+        finally:
+            self.busy = False
+
+    def load_transcription(self, text: str, suggested_name: str = "Transcript.txt") -> bool:
+        """Accept a finished result only when the current document can be replaced.
+
+        False leaves ownership of the result with the caller, so it can remain
+        available while a dialog is open or the user keeps editing their work.
+        """
+        if self.blocked:
+            return False
+        self.busy = True
+        try:
+            if not self._confirm_changes("opening the finished transcript"):
+                return False
+            self.cancel_refresh()
+            self.search_visible = False
+            self.find_panel.grid_remove()
+            self.find_text.set("")
+            self.replace_text.set("")
+            self.match_case.set(False)
+            self.matches = []
+            self.active_match = None
+            self.matches_limited = False
+            self.match_label.set("Enter text to find")
+            self.text.tag_remove("find_match", "1.0", "end")
+            self.text.tag_remove("find_current", "1.0", "end")
+            self.text.delete("1.0", "end")
+            self.text.insert("1.0", text.replace("\r\n", "\n").replace("\r", "\n"))
+            self.text.edit_reset()
+            self.text.edit_modified(False)
+            self.document = None
+            self.saved_text = ""
+            self.suggested_name = suggested_name or "Transcript.txt"
             self.text.mark_set("insert", "1.0")
             self.text.yview_moveto(0)
             self.ui.select_tab("Editor")
@@ -221,7 +263,7 @@ class TranscriptEditor:
         if path is None:
             path = self.ui.filedialog.asksaveasfilename(
                 parent=self.root, title="Save transcript", defaultextension=".txt",
-                initialfile=self.document.path.name if self.document else "Transcript.txt",
+                initialfile=self.document.path.name if self.document else self.suggested_name or "Transcript.txt",
                 filetypes=[("Text transcripts", "*.txt")], confirmoverwrite=True)
             if not path:
                 return False

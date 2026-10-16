@@ -7,10 +7,10 @@ from .environment import format_report, inspect_environment
 
 
 def main(argv: list[str] | None = None) -> int:
-    parser = argparse.ArgumentParser(description="Vidrick Mac starter: no transcription or network access.")
+    parser = argparse.ArgumentParser(description="Vidrick Mac development app: local transcription and text editing.")
     mode = parser.add_mutually_exclusive_group()
     mode.add_argument("--check", action="store_true", help="Print read-only environment checks (default).")
-    mode.add_argument("--preview", action="store_true", help="Open the non-transcribing preview on native arm64 macOS.")
+    mode.add_argument("--preview", action="store_true", help="Open the development app on native arm64 macOS; local engine setup required.")
     mode.add_argument("--windows-preview", action="store_true", help="Preview the UI on Windows only; does not test Mac compatibility.")
     args = parser.parse_args(argv)
     environment = inspect_environment()

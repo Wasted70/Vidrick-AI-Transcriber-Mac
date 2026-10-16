@@ -52,6 +52,7 @@ class EditorTkTests(unittest.TestCase):
         self.editor.text.insert("1.0", text)
         self.editor.saved_text = text
         self.editor.document = None
+        self.editor.suggested_name = None
         self.editor.text.edit_reset()
         self.editor.text.edit_modified(False)
         self.editor.refresh()
@@ -134,6 +135,54 @@ class EditorTkTests(unittest.TestCase):
         self.assertFalse(self.editor.dirty)
         self.assertIn("Saved", self.editor.document_label.get())
         self.assertEqual(path.read_text(encoding="utf-8"), "Saved text")
+
+    def test_finished_result_resets_search_and_undo_then_saves_as_new_document(self):
+        self.reset_text("Previous document")
+        self.editor.show_find()
+        self.editor.find_text.set("document")
+        self.editor.replace_text.set("replacement")
+        self.editor.match_case.set(True)
+        self.editor._refresh_matches()
+        self.assertTrue(self.editor.matches)
+        self.assertTrue(self.editor.load_transcription("Hello 🌍\r\nA finished result", "Interview.txt"))
+        self.root.update()
+        self.assertEqual(self.editor.content(), "Hello 🌍\nA finished result")
+        self.assertTrue(self.editor.dirty)
+        self.assertIsNone(self.editor.document)
+        self.assertIn("Interview.txt · Unsaved changes", self.editor.document_label.get())
+        self.assertFalse(self.editor.text.edit("canundo"))
+        self.assertFalse(self.editor.find_panel.winfo_ismapped())
+        self.assertEqual(self.editor.find_text.get(), "")
+        self.assertEqual(self.editor.replace_text.get(), "")
+        self.assertFalse(self.editor.match_case.get())
+        self.assertEqual(self.editor.text.tag_ranges("find_match"), ())
+        self.editor.text.insert("end-1c", " plus an edit")
+        self.editor.undo()
+        self.assertEqual(self.editor.content(), "Hello 🌍\nA finished result")
+        self.assertTrue(self.editor.dirty)
+        path = self.folder / "Interview.txt"
+        self.dialogs.asksaveasfilename.return_value = str(path)
+        self.assertTrue(self.editor.save())
+        self.assertEqual(self.dialogs.asksaveasfilename.call_args.kwargs["initialfile"], "Interview.txt")
+        self.assertFalse(self.editor.dirty)
+        self.assertEqual(path.read_text(encoding="utf-8"), "Hello 🌍\nA finished result")
+
+    def test_finished_result_can_be_retried_after_cancel_without_losing_edits(self):
+        self.reset_text("Saved text")
+        self.editor.text.insert("end-1c", " edited while transcribing")
+        self.editor.show_find()
+        self.editor.find_text.set("edited")
+        self.editor._refresh_matches()
+        self.assertFalse(self.editor.load_transcription("Finished transcript", "Recording.txt"))
+        self.assertEqual(self.editor.content(), "Saved text edited while transcribing")
+        self.assertEqual(self.editor.saved_text, "Saved text")
+        self.assertEqual(self.editor.find_text.get(), "edited")
+        self.assertTrue(self.editor.text.edit("canundo"))
+        self.messages.askyesnocancel.return_value = False
+        self.assertTrue(self.editor.load_transcription("Finished transcript", "Recording.txt"))
+        self.assertEqual(self.editor.content(), "Finished transcript")
+        self.assertEqual(self.messages.askyesnocancel.call_count, 2)
+        self.assertFalse(self.editor.text.edit("canundo"))
 
     def test_shortcuts_route_open_save_find_and_preserve_recording_queue(self):
         source, copy = self.folder / "opened.txt", self.folder / "copy.txt"

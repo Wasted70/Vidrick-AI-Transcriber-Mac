@@ -11,3 +11,6 @@ dist/
 *.p12
 *.key
 test-output/
+runtime-output/
+local-tools/
+models/

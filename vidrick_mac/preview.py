@@ -1,14 +1,15 @@
-"""Independent offline Mac UI with local plain-text transcript editing."""
+"""Independent Mac development UI with local transcription and text editing."""
 
 from . import __version__
 from .environment import inspect_environment
 from .editor import TranscriptEditor
 from .preview_model import COLORS as C, PREVIEW_TABS, PreviewState, display_filename
 from .preview_style import rounded_surface
+from .transcription_panel import TranscriptionPanel
 
 
 class PreviewUI:
-    """Recording paths stay in memory; the Editor can open/save chosen text files."""
+    """Local Mac workflow, with an explicitly non-transcribing Windows UI mode."""
 
     def __init__(self, root, *, windows_preview, tk, ttk, filedialog, messagebox=None):
         self.root, self.tk, self.ttk, self.filedialog = root, tk, ttk, filedialog
@@ -27,6 +28,7 @@ class PreviewUI:
         self.variables = []
         self.tab_buttons, self.tab_rows, self.tab_icons, self.pages = {}, {}, {}, {}
         self.tab_canvases, self.tab_fills = {}, {}
+        self.pipeline = TranscriptionPanel(self)
         self.family = root.tk.call("font", "actual", "TkDefaultFont", "-family")
         self._styles()
         root.configure(bg=C["window"])
@@ -105,6 +107,9 @@ class PreviewUI:
         style.configure("Preview.Treeview", background=C["card"], fieldbackground=C["card"],
                         foreground=C["text"], bordercolor=C["border"], borderwidth=1,
                         lightcolor=C["border"], darkcolor=C["border"])
+        style.configure("Preview.Horizontal.TProgressbar", background=C["accent"],
+                        troughcolor=C["accent_soft"], bordercolor=C["border"],
+                        lightcolor=C["accent"], darkcolor=C["accent"], thickness=8)
         style.map("Preview.Treeview", background=[("selected", C["selected"])],
                   foreground=[("selected", C["text"])], bordercolor=[("focus", C["accent"])])
         self._bubble_buttons(style)
@@ -292,7 +297,7 @@ class PreviewUI:
                                     highlightcolor=C["accent"], takefocus=True)
             button.pack(side="left", fill="x", expand=True)
             self.tab_buttons[name], self.tab_rows[name], self.tab_icons[name] = button, row, icon
-        self.label(bottom, f"Interface preview  {__version__}", bg=C["sidebar"], size=9, muted=True).pack(
+        self.label(bottom, f"Development  {__version__}", bg=C["sidebar"], size=9, muted=True).pack(
             anchor="w", padx=10, pady=(12, 0))
 
     def _header(self, parent):
@@ -311,7 +316,7 @@ class PreviewUI:
         notice = self.tk.Frame(parent, bg=C["header"], padx=22, pady=9)
         notice.grid(row=2, column=0, sticky="ew")
         mode = ("Windows development preview - not a Mac compatibility test" if self.windows_preview
-                else "Apple Silicon interface preview - not a production release")
+                else "Apple Silicon development app - not a production release")
         self.note(notice, mode, bg=C["header"], size=9).pack(fill="x")
         self.shortcut_notice = self.tk.StringVar(value="")
         self.label(notice, textvariable=self.shortcut_notice, bg=C["header"], size=9, muted=True).pack(
@@ -332,7 +337,8 @@ class PreviewUI:
             self.shortcut_notice.set(
                 f"{self.shortcut_label}O  Open transcript    ·    {self.shortcut_label}S  Save    ·    {self.shortcut_label}F  Find"
                 if name == "Editor" else
-                f"{self.shortcut_label}O  Add files    ·    {self.shortcut_label},  Settings    ·    Recordings stay unopened.")
+                f"{self.shortcut_label}O  Add files    ·    {self.shortcut_label},  Settings    ·    " +
+                ("Windows UI preview only." if self.windows_preview else "Local processing on your Mac."))
         self.page_title.set(name)
         for tab, button in self.tab_buttons.items():
             color = C["selected"] if name == tab else C["sidebar"]
@@ -413,7 +419,8 @@ class PreviewUI:
         self.settings_canvas.focus_set()
 
     def close_preview(self):
-        if self.editor_panel.confirm_close():
+        if self.pipeline.allow_close() and self.editor_panel.confirm_close():
+            self.pipeline.dispose()
             self.editor_panel.cancel_refresh()
             self.root.destroy()
 
@@ -461,7 +468,7 @@ class PreviewUI:
         self.path_caption = self.tk.StringVar(value="Select a file to see its full path")
         self.label(self.list_frame, textvariable=self.path_caption, size=9, muted=True).grid(
             row=2, column=0, sticky="w", pady=(10, 4))
-        self.path_detail = self.tk.Text(self.list_frame, height=3, width=1, wrap="word",
+        self.path_detail = self.tk.Text(self.list_frame, height=2, width=1, wrap="word",
                                         font=(self.family, 9), bg=C["card"], fg=C["muted"],
                                         selectbackground=C["selected"], selectforeground=C["text"],
                                         relief="flat", borderwidth=0, padx=4, pady=4,
@@ -481,21 +488,12 @@ class PreviewUI:
         self.empty_files.rowconfigure((0, 2), weight=1)
         empty = self.tk.Frame(self.empty_files, bg=C["card"])
         empty.grid(row=1, column=0, sticky="ew", padx=8, pady=2)
-        bubble = self.tk.Frame(empty, bg=C["card"])
-        bubble.pack(pady=(0, 12))
-        badge = self.tk.Canvas(bubble, width=64, height=64, bg=C["card"], highlightthickness=0)
-        badge.pack()
-        badge.create_oval(2, 4, 62, 64, fill=C["shadow"], outline="")
-        badge.create_oval(2, 1, 62, 61, fill=C["accent_soft"], outline=C["highlight"], width=2)
-        self._icon(bubble, "wave", size=34, bg=C["accent_soft"]).place(x=15, y=14)
         self.label(empty, "Start with a recording", size=14, bold=True, anchor="center").pack(fill="x")
-        self.note(empty, "Choose audio or video files to try the layout.", centered=True).pack(fill="x", pady=(8, 14))
+        self.note(empty, "Choose audio or video, then select one file.", centered=True).pack(fill="x", pady=(8, 14))
         self.choose_files_button = self.button(empty, "Choose Files…", self.choose_files, primary=True)
         self.choose_files_button.pack()
-        self.note(empty, "Only file names and paths are selected.\nNothing is opened or processed.",
-                  size=9, centered=True).pack(fill="x", pady=(14, 0))
         actions = self.tk.Frame(left, bg=C["card"])
-        actions.grid(row=3, column=0, sticky="ew", pady=(14, 0))
+        actions.grid(row=3, column=0, sticky="ew", pady=(8, 0))
         self.remove_button = self.button(actions, "Remove", self.remove_selected)
         self.remove_button.pack(side="left")
         self.clear_button = self.button(actions, "Clear", self.clear_files)
@@ -505,7 +503,7 @@ class PreviewUI:
         right.columnconfigure(0, weight=1)
         right.rowconfigure(2, weight=1)
         self.label(right, "Transcription settings", size=12, bold=True).grid(row=0, column=0, sticky="w")
-        self.label(right, "Preview selections", size=9, muted=True).grid(row=1, column=0, sticky="w", pady=(4, 16))
+        self.label(right, "One recording at a time", size=9, muted=True).grid(row=1, column=0, sticky="w", pady=(4, 12))
         self.settings_canvas = self.tk.Canvas(right, bg=C["card"], highlightthickness=1,
                                              highlightbackground=C["card"], highlightcolor=C["accent"],
                                              width=244, takefocus=True)
@@ -519,16 +517,14 @@ class PreviewUI:
         item = self.settings_canvas.create_window((0, 0), window=form, anchor="nw")
         form.bind("<Configure>", lambda event: self.settings_canvas.configure(scrollregion=self.settings_canvas.bbox("all")))
         self.settings_canvas.bind("<Configure>", lambda event: self.settings_canvas.itemconfigure(item, width=max(1, event.width-2)))
-        self._settings_form(form)
+        self.pipeline.build_settings(form)
         self._bind_settings_scroll(form)
         self.settings_canvas.bind("<MouseWheel>", self._scroll_settings)
         for key, direction in (("<Down>", 1), ("<Up>", -1), ("<Next>", 1), ("<Prior>", -1)):
             units = "pages" if key in ("<Next>", "<Prior>") else "units"
             self.settings_canvas.bind(key, lambda event, d=direction, u=units: self._settings_key(d, u))
-        self.button(right, "Start Transcription - unavailable", primary=True, disabled=True).grid(
-            row=3, column=0, columnspan=2, sticky="ew", pady=(16, 0))
-        self.note(right, "Transcription isn't connected yet.", size=9).grid(
-            row=4, column=0, columnspan=2, sticky="ew", pady=(8, 0))
+        self.pipeline.build_start(right)
+        self.pipeline.build_status(page)
         self.refresh_files()
 
     def _settings_key(self, direction, units):
@@ -575,66 +571,22 @@ class PreviewUI:
         event.widget.tk_focusPrev().focus_set()
         return "break"
 
-    def _settings_form(self, form):
-        row = 0
-        for title, values, disabled in (
-            ("Language", ["Auto-detect", "English", "Spanish", "French", "German", "Portuguese", "Italian", "Japanese"], False),
-            ("Task", ["Transcribe", "Translate to English"], False),
-            ("Quality", ["Balanced", "Fast", "Accurate"], False),
-            ("Processor", ["CPU (planned Mac target)"], True),
-        ):
-            self.label(form, title, size=10).grid(row=row, column=0, sticky="w", pady=(0, 5))
-            variable = self.tk.StringVar(value=values[0])
-            self.variables.append(variable)
-            self.ttk.Combobox(form, textvariable=variable, values=values,
-                              state="disabled" if disabled else "readonly", width=18,
-                              takefocus=not disabled, style="Preview.TCombobox").grid(
-                                  row=row+1, column=0, sticky="ew", pady=(0, 14))
-            row += 2
-        self._form_section(form, "Export", row)
-        row += 1
-        self.label(form, "Output folder", size=10).grid(row=row, column=0, sticky="w", pady=(0, 5))
-        self.button(form, "Not connected in this preview", disabled=True).grid(row=row+1, column=0, sticky="ew", pady=(0, 10))
-        formats = self.tk.Frame(form, bg=C["card"])
-        formats.grid(row=row+2, column=0, sticky="ew", pady=(0, 8))
-        for index, title in enumerate(("TXT", "Word", "SRT", "VTT")):
-            self._checkbox(formats, title, title == "TXT").grid(row=index//2, column=index%2, sticky="w", padx=(0, 24))
-        row += 3
-        self._checkbox(form, "Include timestamps", True).grid(row=row, column=0, sticky="w")
-        row += 1
-        self._form_section(form, "Insights", row)
-        row += 1
-        for title, checked in (("Create a summary", False), ("Extract action items", False), ("Identify speakers", True)):
-            self._checkbox(form, title, checked).grid(row=row, column=0, sticky="w")
-            row += 1
-        self.label(form, "Expected speakers", size=10).grid(row=row, column=0, sticky="w", pady=(12, 5))
-        speakers = self.tk.StringVar(value="Automatic")
-        self.variables.append(speakers)
-        self.ttk.Combobox(form, textvariable=speakers, values=["Automatic", "2", "3", "4", "5"],
-                          state="readonly", width=18, style="Preview.TCombobox").grid(row=row+1, column=0, sticky="ew")
-        self.note(form, "Temporary controls only. No models or downloads are connected.", size=9).grid(
-            row=row+2, column=0, sticky="ew", pady=(14, 6))
-
     def _form_section(self, form, title, row):
         group = self.tk.Frame(form, bg=C["card"])
         group.grid(row=row, column=0, sticky="ew", pady=(10, 10))
         self.tk.Frame(group, bg=C["border"], height=1).pack(fill="x", pady=(0, 14))
         self.label(group, title, size=10, bold=True).pack(anchor="w")
 
-    def _checkbox(self, parent, title, checked):
-        variable = self.tk.BooleanVar(value=checked)
-        self.variables.append(variable)
-        return self.ttk.Checkbutton(parent, text=title, variable=variable,
-                                    style="Preview.TCheckbutton", takefocus=True)
-
     def choose_files(self):
-        if self._file_dialog_open or self.editor_panel.busy:
+        if self._file_dialog_open or self.editor_panel.busy or self.pipeline.running:
             return
         focused = self.root.focus_get()
         self._file_dialog_open = True
         try:
             paths = self.filedialog.askopenfilenames(
-                parent=self.root, title="Choose files - preview only; files will not be read")
+                parent=self.root, title="Choose recording files",
+                filetypes=[("Audio and video", "*.wav *.mp3 *.m4a *.mp4 *.mov *.mkv *.flac *.aac *.ogg *.webm *.wma *.aif *.aiff"),
+                           ("All files", "*")])
         finally:
             self._file_dialog_open = False
         if paths:
@@ -653,16 +605,22 @@ class PreviewUI:
 
     def _update_file_actions(self, event=None):
         selected = self._selected_file_indices()
-        self.remove_button.configure(state="normal" if selected else "disabled")
-        self.clear_button.configure(state="normal" if self.state.files else "disabled")
+        available = not self.pipeline.running
+        self.add_files_button.configure(state="normal" if available else "disabled")
+        self.choose_files_button.configure(state="normal" if available else "disabled")
+        self.remove_button.configure(state="normal" if selected and available else "disabled")
+        self.clear_button.configure(state="normal" if self.state.files and available else "disabled")
         caption = ("Full path" if len(selected) == 1 else f"Full paths · {len(selected)} selected")
         self.path_caption.set(caption if selected else "Select a file to see its full path")
         self.path_detail.configure(state="normal", takefocus=bool(selected))
         self.path_detail.delete("1.0", "end")
         self.path_detail.insert("1.0", "\n".join(self.state.files[index] for index in selected))
         self.path_detail.configure(state="disabled")
+        self.pipeline.update_controls()
 
     def remove_selected(self):
+        if self.pipeline.running:
+            return
         selected = self._selected_file_indices()
         if not selected:
             return
@@ -673,6 +631,8 @@ class PreviewUI:
         (self.file_list if self.state.files else self.choose_files_button).focus_set()
 
     def clear_files(self):
+        if self.pipeline.running:
+            return
         self.state.clear_files()
         self.refresh_files(selected_paths=[])
         self.choose_files_button.focus_set()
@@ -692,7 +652,8 @@ class PreviewUI:
         if selected_items:
             self.file_list.focus(selected_items[0])
             self.file_list.see(selected_items[0])
-        self.files_summary.set(self.state.summary)
+        self.files_summary.set(self.state.summary if self.windows_preview else
+                               f"{len(self.state.files)} files added · select one to transcribe" if self.state.files else "No files added")
         if self.state.files:
             self.empty_files.grid_remove()
             self.list_frame.grid()
@@ -729,7 +690,7 @@ class PreviewUI:
         self.label(page, "A clearer view of your conversation", bg=C["window"], size=19, bold=True).grid(
             row=0, column=0, sticky="w", pady=(0, 18))
         for row, title, text in ((1, "Summary", "A summary of your transcript will appear here. No analysis has been run in this preview."),
-                                  (2, "Action items & key points", "Find the next steps from a conversation here once transcription and insights are connected.")):
+                                  (2, "Action items & key points", "Insights are planned. Review and save your finished transcript in the Editor.")):
             shell, body = self.card(page)
             shell.grid(row=row, column=0, sticky="nsew", pady=(0, 14) if row == 1 else 0)
             self._icon(body, "insights", size=24).pack(anchor="w", pady=(0, 10))
@@ -748,7 +709,7 @@ class PreviewUI:
         empty.grid(row=1, column=0, sticky="ew")
         self._icon(empty, "history", size=48).pack(pady=(0, 18))
         self.label(empty, "Your work will appear here", size=16, bold=True, anchor="center").pack(fill="x")
-        self.note(empty, "No recent transcriptions. This preview doesn't run jobs or save history.",
+        self.note(empty, "History isn't saved yet. Save finished transcripts from the Editor before closing.",
                   centered=True).pack(fill="x", pady=(10, 0))
 
     def _about(self, page):
@@ -756,11 +717,11 @@ class PreviewUI:
         shell.pack(fill="both", expand=True)
         self._icon(body, "wave", size=48).pack(anchor="w", pady=(4, 16))
         self.label(body, "Vidrick for Mac", size=23, bold=True).pack(anchor="w")
-        self.label(body, f"Interface prototype {__version__}", size=10, muted=True).pack(anchor="w", pady=(6, 20))
+        self.label(body, f"Development prototype {__version__}", size=10, muted=True).pack(anchor="w", pady=(6, 20))
         self.note(body, "Designed for Apple Silicon. Native Mac testing is still required.").pack(fill="x", pady=(0, 12))
-        self.note(body, "An independent, offline interface preview with a local text editor. "
-                  "Transcription, model downloads, formatted exports, licensing, and automatic updates "
-                  "are not connected.").pack(fill="x", pady=(0, 24))
+        self.note(body, "A local text editor and a development transcription pipeline for Apple Silicon. "
+                  "Choose an existing Whisper engine and model on your Mac. The Windows mode previews the UI only. "
+                  "Model downloads, formatted exports, licensing, and automatic updates are not connected.").pack(fill="x", pady=(0, 24))
         self.tk.Frame(body, bg=C["border"], height=1).pack(fill="x", pady=(0, 20))
         self.label(body, "Account & updates", size=13, bold=True).pack(anchor="w", pady=(0, 8))
         self.note(body, "No customer account or license is accessed in this preview.").pack(fill="x", pady=(0, 16))
