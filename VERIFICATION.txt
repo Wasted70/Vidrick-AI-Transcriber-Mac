@@ -232,3 +232,49 @@ Vidrick-AI-Transcriber-Mac repository so a friend can test ongoing work.
 
 This publishes the existing source preview for testing, not a signed Mac
 application or a transcription release. Native Mac validation is still due.
+
+LOCAL TRANSCRIPT EDITOR - OCTOBER 16, 2026
+
+The user authorized a working plain-text Editor and a development push to
+the Mac GitHub repository. Friend testing remains deferred.
+
+- Replaced the scratchpad with .txt Open, Save, Save As, an unsaved indicator,
+  and save/discard/cancel decisions before closing or opening another file.
+  Failed or canceled saves preserve edits and prevent the window from closing.
+- Literal find/replace with case matching, previous/next navigation, visible
+  highlights, and Replace All as one undoable action. Emoji match boundaries
+  account for Tk 8.6's differing search-count and index-movement behavior.
+- Undo/redo preserve a separate save point: undoing back to saved text clears
+  the unsaved indicator. Word/character counts and 12-24pt reading sizes added.
+- Command shortcuts on Mac (Control in the Windows preview) for Open, Save,
+  Save As, Find, Undo, and Redo. Open is contextual: transcripts in Editor,
+  recording paths elsewhere. Text editing cannot remove recording-list rows.
+- Bounded regular-file reads, UTF-8/BOM-marked UTF-16 support, preserved BOMs
+  and dominant line endings, and atomic same-directory saves. External edits
+  to the current file require an overwrite decision. Symbolic-link writes,
+  binary text, unsupported encoding, and files over 8 MiB are rejected.
+- Editor/file dialogs share a reentry guard. Close protection is registered
+  for the window and native Aqua Quit callback; Aqua behavior is not verified.
+
+Verification on Windows with bundled Python 3.12.14 / Tk 8.6.12:
+- Full suite with VIDRICK_TEST_TK=1: 96 tests ran, 94 passed, 2 POSIX-only
+  checks skipped (native permission bits and FIFO behavior).
+- Includes 18 headless Editor lifecycle tests, 16 transcript I/O tests,
+  and 7 opt-in real Tk Editor tests, plus all 55 prior tests.
+- Real Tk covered Unicode/literal/case matching, grouped replacement undo,
+  the save-point undo regression, actual Control shortcuts, recording-list
+  separation, close/save cancellation, font sizing, and minimum-size layout.
+- File tests used only synthetic temporary files under ignored test-output/;
+  existing bytes survive write/replace failures, and temp files are cleaned.
+- Syntax parsed for all 14 Python files. All five pages fit 940x640 outside
+  intentionally scrollable settings contents; Editor find/replace also fits.
+- Visually inspected the Editor at minimum size, clicked Replace All, then
+  Undo, and confirmed highlights and the unsaved indicator updated correctly.
+- Independent code review identified missing save-point separation and
+  non-regular read-target protection; both were fixed and verified.
+
+No native Mac or customer files were used. No transcription engine, model,
+dependency, service, account integration, or installer was added. All changes
+remain in the isolated Mac project. Native Mac rendering, physical Command
+keys, file dialogs, filesystem semantics, and Quit behavior still need Mac
+validation when the owner is ready for that stage.

@@ -6,18 +6,19 @@
 - Do not edit, build, test, install packages into, publish from, or create caches in the Windows project. Never import its modules or add it to `sys.path`.
 - Keep all code, tests, outputs, environments, and build work inside this Mac folder. No links to shared writable source or automatic two-way synchronization.
 - Do not copy whole project trees, customer recordings, account state, secrets, signing keys, installers, CUDA libraries, portal code, or website code here.
-- Current scope is an offline preflight and non-transcribing UI preview. No model downloads, licensing requests, account activation, automatic updates, telemetry, or production services.
+- Current scope is an offline preflight, non-transcribing UI preview, and local plain-text transcript Editor. The user authorized opening/saving explicitly chosen .txt files, find/replace, undo/redo, unsaved-change protection, word count, and text sizing. Recording selections remain path-only; no recording contents are read. No model downloads, licensing requests, account activation, automatic updates, telemetry, or production services.
 - A future functional port must preserve licensing enforcement; this preview has no transcription engine and is not a licensing bypass.
 - Native M-series/arm64 macOS is the initial target. Intel/Rosetta and Apple GPU acceleration are outside the current scope.
 - The user authorized a separate `--windows-preview` UI development mode in this Mac folder. It must be explicitly selected, Windows-only, visibly labeled, non-transcribing, and disconnected from the production Windows app. Preserve the native-Mac guards on `--check` and `--preview`.
 - Do not claim Mac compatibility, benchmark results, or release readiness from Windows-based or mocked tests. Native Mac testing is still required.
 - Do not push, publish, purchase services, or configure hosted builds without a user request covering that work.
 - Run tests with `python -B -m unittest discover -s tests -v`. Do not install dependencies globally.
+- File-I/O tests must use synthetic files under this project's ignored `test-output/`, never customer recordings. For Editor changes, also run the opt-in real Tk tests with `VIDRICK_TEST_TK=1` in a desktop session. Native Mac behavior remains unverified until actually checked on a Mac.
 
-## GitHub updates for Mac testing
+## GitHub development updates
 
-- The user authorized publishing this isolated Mac project and automatically pushing completed, verified changes from this chat so their friend can test them.
-- Repository: `https://github.com/Wasted70/Vidrick-AI-Transcriber-Mac.git`; remote `origin`; testing branch `main`. This authorization covers this repository only. It does not authorize changing repository visibility, inviting collaborators, hosted builds, releases, or publishing anything from the Windows project.
+- The user authorized publishing this isolated Mac project and automatically pushing completed, verified development changes from this chat. GitHub is set up for future sharing; the user explicitly deferred friend testing until they say the app is ready. Do not invite or notify testers or imply that a development push is a test release.
+- Repository: `https://github.com/Wasted70/Vidrick-AI-Transcriber-Mac.git`; remote `origin`; development branch `main`. This authorization covers this repository only. It does not authorize changing repository visibility, inviting collaborators, hosted builds, releases, or publishing anything from the Windows project.
 - At the end of each completed Mac development task, inspect the changes and verify `origin` still targets this exact repository. Run `python -E -B -m unittest discover -s tests -v` using the appropriate existing Python interpreter; perform focused UI checks when needed.
 - Stage only reviewed files belonging to the completed task. Keep recordings, customer data, credentials, models, virtual environments, and build output out of Git. Never include unrelated user changes in an automatic commit.
 - Commit with a descriptive message and push `main` to `origin` without asking again. This is an end-of-task workflow, not a background file watcher or a timed auto-commit job; incomplete edits must not be published automatically.

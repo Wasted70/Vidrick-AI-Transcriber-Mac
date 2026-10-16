@@ -181,11 +181,15 @@ class WindowsCommandTests(unittest.TestCase):
             for item in fake_tk.Button.call_args_list + fake_ttk.Button.call_args_list
             if "text" in item.kwargs
         }
-        for title in ("Start Transcription - unavailable", "Open Transcript", "Save As",
+        for title in ("Start Transcription - unavailable",
                       "Manage Account", "Check for Updates", "Not connected in this preview"):
             with self.subTest(button=title):
                 self.assertEqual(buttons[title].get("state"), "disabled")
                 self.assertFalse(buttons[title].get("command"))
+        for title in ("Open…", "Save", "Save As…"):
+            with self.subTest(editor_button=title):
+                self.assertNotEqual(buttons[title].get("state"), "disabled")
+                self.assertTrue(callable(buttons[title].get("command")))
 
         # All dialogs and widget calls remain mocks. Cancellation retains the
         # queue; remove and clear change only in-memory state.
@@ -248,6 +252,9 @@ class WindowsCommandTests(unittest.TestCase):
                 global_keys = [call.args[1] for call in root.bind_class.call_args_list]
                 self.assertIn(f"<{modifier}-o>", global_keys)
                 self.assertIn(f"<{modifier}-comma>", global_keys)
+                self.assertIn(f"<{modifier}-f>", global_keys)
+                self.assertIn(f"<{modifier}-s>", global_keys)
+                self.assertIn(f"<{modifier}-Shift-S>", global_keys)
                 self.assertNotIn("<Delete>", global_keys)
                 self.assertNotIn("<BackSpace>", global_keys)
                 self.assertNotIn(f"<{modifier}-a>", global_keys)

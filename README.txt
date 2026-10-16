@@ -20,15 +20,18 @@ WHAT WORKS AT THIS STAGE
 - Multi-file browsing with clear filenames, selectable full-path details,
   selection-aware remove/clear controls, and temporary settings selections.
 - Keyboard shortcuts for adding/selecting/removing files and opening settings.
-- An Editor scratchpad (not saved), plus clearly labeled Insights, History,
-  and About & Updates placeholder panels.
+- A local transcript Editor with .txt Open/Save/Save As, find and replace,
+  undo/redo, unsaved-change protection, word/character counts, and text sizing.
+- Clearly labeled Insights, History, and About & Updates placeholder panels.
 - A separately labeled Windows development preview of that same small UI.
 - A separate future Mac-preview data path. It is calculated, not created.
 - Standard-library unit tests; no pip install or AI dependencies required.
 
 WHAT DOES NOT HAPPEN
 No recording is read, transcribed, uploaded, or copied. A selected file path
-is shown only in the preview window and is not saved. There are no models,
+in the recording list is shown only in the preview window and is not saved.
+The Editor reads and writes only the .txt files you explicitly open or save.
+There are no models,
 production account connections, license requests, analytics, or updates.
 The transcription button is deliberately disabled. No Windows source,
 settings, credentials, release files, or dependencies were copied here.
@@ -45,7 +48,7 @@ Alternatively, from THIS Mac folder with Python 3.11+ and Tk:
 
 The title and footer identify this as a Windows development preview. You can
 choose multiple files, remove/clear selections, switch the five sidebar sections, try the
-settings controls, and type in the temporary Editor scratchpad. The Settings
+settings controls, and edit local text transcripts in the Editor. The Settings
 button jumps to the top of the Transcribe section's scrollable settings pane.
 Use the mouse wheel or scrollbar in that pane, or arrow/Page Up/Page Down keys
 when the settings canvas has focus. Keyboard focus is visible on controls.
@@ -57,14 +60,44 @@ Clear empties the list. Duplicate additions and canceled browsing preserve
 the current selection. Removing rows selects the nearest remaining row.
 
 Keyboard shortcuts (while the preview window is active):
-  Mac Command+O / Windows Ctrl+O: Add files from any section.
+  Mac Command+O / Windows Ctrl+O: Open a .txt transcript in the Editor;
+    add recording paths from the other sections.
   Mac Command+, / Windows Ctrl+,: Open and focus transcription settings.
+  Mac Command+F / Windows Ctrl+F: Show the Editor's find/replace panel.
+  Mac Command+S / Windows Ctrl+S: Save the Editor transcript.
+  Mac Command+Shift+S / Windows Ctrl+Shift+S: Save As a separate .txt file.
+  Mac Command+Z / Windows Ctrl+Z: Undo while editing the transcript.
+  Mac Command+Shift+Z / Windows Ctrl+Shift+Z: Redo (Windows Ctrl+Y also works).
   Mac Command+A / Windows Ctrl+A: Select all rows when the file list has focus.
   Delete or Backspace: Remove selected rows when the file list has focus.
   Tab / Shift+Tab: Move between controls, including the read-only path area.
 The Editor retains normal text editing; list removal shortcuts never remove
 files while typing there. Use Ctrl+Tab to leave the Editor's text area.
 Native Command shortcuts still require an actual Mac keyboard check.
+
+EDITING TRANSCRIPTS
+Open a .txt file or begin typing in the empty Editor. Save writes to the
+current file; an untitled document prompts for a destination. Save As writes
+a separate copy. The filename line shows Unsaved changes until the current
+text matches the last successful save or open. Before closing or replacing
+an edited document, the app asks whether to save, discard, or keep editing.
+Canceling or failing a save keeps the window and your edits open.
+
+Find and replace uses literal text, with optional Match case. Previous/Next
+wrap through highlighted matches; Return / Shift+Return navigate from the
+search fields and Escape closes the panel. Replace changes the current
+match; Replace All is one undoable action. Searches show up to 2,000 matches;
+larger results ask you to refine the term before Replace All, with no partial
+replacement. Text size ranges from 12 to 24 points and does not modify the
+saved text. Word counts use whitespace-separated words.
+
+Files may be up to 8 MiB, encoded as UTF-8 or BOM-marked UTF-16. Opened BOMs
+and the dominant line ending are preserved when saving; new files use UTF-8
+with LF line endings. Invalid/binary text is rejected with an error message.
+Saves use a temporary file beside the destination and replace it only after
+writing succeeds. Changes made to the current file by another app trigger
+an overwrite decision. For a symbolic-link transcript, use Save As to a new
+regular .txt file. There is no autosave or crash recovery yet.
 
 The toolbar's Transparency checkbox adds a subtle effect at 97% window
 opacity. Uncheck it for a fully opaque window. This choice is temporary;
@@ -73,16 +106,22 @@ whole window, including text; it is not background blur or native Liquid
 Glass. Rounded button artwork is generated in memory using the standard
 library; no assets or extra dependencies are downloaded. Aqua keeps its
 native button rendering on macOS.
-Transcription, exports, output-folder selection, account management, and updates
-remain disabled. Drag and drop is not implemented. No files are opened/read,
-and all selections and typed text disappear when the preview closes.
+Transcription, formatted exports, recording output-folder selection, account
+management, and updates remain disabled. Drag and drop is not implemented.
+Recording paths and settings disappear when the preview closes; only text
+explicitly saved from the Editor persists.
 This is not a Mac emulator or a functional port of the Windows app. Appearance,
 installation, Apple-chip performance, and Mac compatibility still need a Mac.
 It never uses the installed Windows Vidrick app or its project, data, models,
 accounts, or settings. The -E flag ignores Python environment overrides, and
 -B prevents bytecode files from being written during the preview.
 
-RUN ON YOUR FRIEND'S M-SERIES MAC
+DEVELOPMENT STATUS
+GitHub holds ongoing development updates. Friend testing is deferred until
+the owner says the app is ready. The following Mac setup instructions are
+available for that later stage; a push is not a signed release or test invite.
+
+RUN ON AN M-SERIES MAC WHEN READY
 The Mac source lives in its own GitHub repository:
 https://github.com/Wasted70/Vidrick-AI-Transcriber-Mac
 
@@ -140,13 +179,23 @@ and list Command+A / Delete. Confirm typing in the Editor never removes
 file rows, Tab reveals focused settings, resizing remains usable, and the
 Transparency checkbox and closing/reopening work. Use non-sensitive sample
 files and keep private paths or customer content out of screenshots.
+For the Editor, check text open/save, canceled save-before-close, find/replace,
+undo back to a saved state, Unicode text, and Command shortcuts.
 
 RUN TESTS (MAC OR WINDOWS)
 From THIS Mac folder, using an existing Python 3.11+ interpreter:
 
   python -B -m unittest discover -s tests -v
 
-The tests mock Mac environments. They do not prove the window works on a Mac.
+The normal suite is headless; file tests create only synthetic data under
+test-output/ and clean up their temporary folders. To include real Tk Editor
+checks in a desktop session, set VIDRICK_TEST_TK=1 for that test process:
+
+  Mac: VIDRICK_TEST_TK=1 python3 -E -B -m unittest discover -s tests -v
+  Windows PowerShell: $env:VIDRICK_TEST_TK = '1'
+                      python -E -B -m unittest discover -s tests -v
+
+Windows results and mocked Mac environments do not prove native Mac support.
 Running --preview on Windows is intentionally refused without opening a window.
 Use the explicit --windows-preview mode instead. That flag does not make the
 default Mac preflight pass, and it is refused on macOS/Linux.
@@ -161,9 +210,9 @@ Windows folder. Future shared fixes should be deliberately ported and tested
 after Windows work, not automatically copied in either direction.
 
 NEXT SMALL MILESTONE
-Review the polished file list and keyboard navigation on Windows; then have
-a native Mac run the preflight and preview to check the window, Command
-shortcuts, file picker, focus behavior, and closing behavior. Separately
-scope a CPU transcription experiment,
+Develop a one-recording transcription workflow with progress, cancellation,
+and a result that opens in the Editor. Native Mac validation will follow when
+the owner is ready: preflight, window, Command shortcuts, file picker, focus,
+and closing behavior. Separately scope a CPU transcription experiment,
 Mac dependencies, and licensing integration. Packaging, signing, notarization,
 hosted builds, GPU acceleration, and packaged app releases are later work.

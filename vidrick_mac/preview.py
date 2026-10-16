@@ -1,16 +1,18 @@
-"""Independent, offline Mac-style UI preview; all state is temporary."""
+"""Independent offline Mac UI with local plain-text transcript editing."""
 
 from . import __version__
 from .environment import inspect_environment
+from .editor import TranscriptEditor
 from .preview_model import COLORS as C, PREVIEW_TABS, PreviewState, display_filename
 from .preview_style import rounded_surface
 
 
 class PreviewUI:
-    """All controls affect this window's memory only. No processing backend."""
+    """Recording paths stay in memory; the Editor can open/save chosen text files."""
 
-    def __init__(self, root, *, windows_preview, tk, ttk, filedialog):
+    def __init__(self, root, *, windows_preview, tk, ttk, filedialog, messagebox=None):
         self.root, self.tk, self.ttk, self.filedialog = root, tk, ttk, filedialog
+        self.messagebox = messagebox
         self.windows_preview = windows_preview
         self.primary_key = "Control" if windows_preview else "Command"
         self.shortcut_label = "Ctrl+" if windows_preview else "⌘"
@@ -57,6 +59,9 @@ class PreviewUI:
         self.select_tab("Transcribe")
         self._install_shortcuts()
         self._apply_transparency()
+        root.protocol("WM_DELETE_WINDOW", self.close_preview)
+        if root.tk.call("tk", "windowingsystem") == "aqua":
+            root.createcommand("::tk::mac::Quit", self.close_preview)
 
     def _styles(self):
         style = self.ttk.Style(self.root)
@@ -308,8 +313,9 @@ class PreviewUI:
         mode = ("Windows development preview - not a Mac compatibility test" if self.windows_preview
                 else "Apple Silicon interface preview - not a production release")
         self.note(notice, mode, bg=C["header"], size=9).pack(fill="x")
-        self.note(notice, f"{self.shortcut_label}O  Add files    ·    {self.shortcut_label},  Settings    ·    No recording is read or saved.",
-                  bg=C["header"], size=9).pack(fill="x", pady=(2, 0))
+        self.shortcut_notice = self.tk.StringVar(value="")
+        self.label(notice, textvariable=self.shortcut_notice, bg=C["header"], size=9, muted=True).pack(
+            fill="x", pady=(2, 0))
 
     def select_tab(self, name):
         old_page = self.pages.get(self.current_tab)
@@ -322,6 +328,11 @@ class PreviewUI:
             else:
                 page.grid_remove()
         self.current_tab = name
+        if hasattr(self, "shortcut_notice"):
+            self.shortcut_notice.set(
+                f"{self.shortcut_label}O  Open transcript    ·    {self.shortcut_label}S  Save    ·    {self.shortcut_label}F  Find"
+                if name == "Editor" else
+                f"{self.shortcut_label}O  Add files    ·    {self.shortcut_label},  Settings    ·    Recordings stay unopened.")
         self.page_title.set(name)
         for tab, button in self.tab_buttons.items():
             color = C["selected"] if name == tab else C["sidebar"]
@@ -342,6 +353,11 @@ class PreviewUI:
         for key in ("o", "O"):
             self.root.bind_class(tag, f"<{self.primary_key}-{key}>", self._open_files_shortcut)
         self.root.bind_class(tag, f"<{self.primary_key}-comma>", self._settings_shortcut)
+        for key in ("f", "F"):
+            self.root.bind_class(tag, f"<{self.primary_key}-{key}>", self.editor_panel.show_find)
+        for key in ("s", "S"):
+            self.root.bind_class(tag, f"<{self.primary_key}-{key}>", self._save_shortcut)
+            self.root.bind_class(tag, f"<{self.primary_key}-Shift-{key}>", self._save_as_shortcut)
 
         def attach(widget):
             tags = widget.bindtags()
@@ -356,11 +372,26 @@ class PreviewUI:
             self.file_list.bind(key, self._remove_files_shortcut)
 
     def _open_files_shortcut(self, event=None):
-        self.choose_files()
+        if self.current_tab == "Editor":
+            self.editor_panel.open()
+        else:
+            self.choose_files()
+        return "break"
+
+    def _save_shortcut(self, event=None):
+        if not self.editor_panel.blocked:
+            self.select_tab("Editor")
+            self.editor_panel.save()
+        return "break"
+
+    def _save_as_shortcut(self, event=None):
+        if not self.editor_panel.blocked:
+            self.select_tab("Editor")
+            self.editor_panel.save_as()
         return "break"
 
     def _settings_shortcut(self, event=None):
-        if not self._file_dialog_open:
+        if not self.editor_panel.blocked:
             self.show_settings()
         return "break"
 
@@ -380,6 +411,11 @@ class PreviewUI:
         self.select_tab("Transcribe")
         self.settings_canvas.yview_moveto(0)
         self.settings_canvas.focus_set()
+
+    def close_preview(self):
+        if self.editor_panel.confirm_close():
+            self.editor_panel.cancel_refresh()
+            self.root.destroy()
 
     def _transcribe(self, page):
         page.columnconfigure(0, weight=1)
@@ -592,7 +628,7 @@ class PreviewUI:
                                     style="Preview.TCheckbutton", takefocus=True)
 
     def choose_files(self):
-        if self._file_dialog_open:
+        if self._file_dialog_open or self.editor_panel.busy:
             return
         focused = self.root.focus_get()
         self._file_dialog_open = True
@@ -684,19 +720,8 @@ class PreviewUI:
         return frame, box
 
     def _editor(self, page):
-        shell, body = self.card(page)
-        shell.pack(fill="both", expand=True)
-        body.columnconfigure(0, weight=1)
-        body.rowconfigure(2, weight=1)
-        toolbar = self.tk.Frame(body, bg=C["card"])
-        toolbar.grid(row=0, column=0, sticky="ew", pady=(0, 10))
-        self.label(toolbar, "Scratchpad", size=18, bold=True).pack(side="left")
-        self.button(toolbar, "Save As", disabled=True).pack(side="right")
-        self.button(toolbar, "Open Transcript", disabled=True).pack(side="right", padx=8)
-        self.note(body, "Try writing here. This temporary text disappears when you close the preview.").grid(
-            row=1, column=0, sticky="ew", pady=(0, 18))
-        editor_frame, self.editor = self._text_area(body, "", editable=True)
-        editor_frame.grid(row=2, column=0, sticky="nsew")
+        self.editor_panel = TranscriptEditor(self, page)
+        self.editor = self.editor_panel.text
 
     def _insights(self, page):
         page.columnconfigure(0, weight=1)
@@ -733,8 +758,9 @@ class PreviewUI:
         self.label(body, "Vidrick for Mac", size=23, bold=True).pack(anchor="w")
         self.label(body, f"Interface prototype {__version__}", size=10, muted=True).pack(anchor="w", pady=(6, 20))
         self.note(body, "Designed for Apple Silicon. Native Mac testing is still required.").pack(fill="x", pady=(0, 12))
-        self.note(body, "An independent, offline interface preview. Transcription, model downloads, exports, "
-                  "licensing, and automatic updates are not connected.").pack(fill="x", pady=(0, 24))
+        self.note(body, "An independent, offline interface preview with a local text editor. "
+                  "Transcription, model downloads, formatted exports, licensing, and automatic updates "
+                  "are not connected.").pack(fill="x", pady=(0, 24))
         self.tk.Frame(body, bg=C["border"], height=1).pack(fill="x", pady=(0, 20))
         self.label(body, "Account & updates", size=13, bold=True).pack(anchor="w", pady=(0, 8))
         self.note(body, "No customer account or license is accessed in this preview.").pack(fill="x", pady=(0, 16))
