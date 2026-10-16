@@ -333,3 +333,64 @@ Runtime tools/models must be selected locally on a Mac; setup is session-only.
 History, batch jobs, playback, speakers, and formatted exports remain future work.
 All source/test/output work stayed in C:\Vidrick_AI_Transcriber_Mac. The Windows
 production project, accounts, portal, website, and releases were not modified.
+
+IN-APP ENGINE AND MODEL SETUP - OCTOBER 16, 2026
+
+Added Engine & Models in the visible Transcribe settings header. Easy setup
+prepares a local engine, media converter, and selected multilingual model;
+Use existing files retains manual setup as an option. The Windows preview
+can display the setup UI but cannot download, install, save setup preferences,
+open Apple's installer, or execute transcription tools.
+
+Implementation:
+- Explicit user-triggered HTTPS downloads with fixed byte sizes and SHA-256.
+  Sources: whisper.cpp v1.9.5 pinned commit, CMake 3.31.12 portable Mac CLI,
+  FFmpeg 9.0.2 source, and Tiny/Base/Small GGML models at a pinned HF revision.
+- Safe bounded archive extraction; CMake's unused GUI/framework links skipped.
+- Native Apple Silicon guard before setup I/O; Apple toolchain preflight before
+  fresh downloads. The dedicated Apple-tools button opens Apple's own installer.
+- Private source builds with GPU/network/external-library discovery disabled
+  as applicable. No Homebrew, pip, sudo, security changes, or global tool install.
+- Engine/FFmpeg executable and hash receipts, reusable verified downloads/tools,
+  free-space check, bounded subprocess diagnostics, deadlines, and cancellation.
+- Atomic selection persistence only after the worker has completed successfully.
+  Interrupted setup keeps the previous selection; cleanup failures remain errors.
+- Saved paths restored without startup network requests. Editor remains usable;
+  transcription and conflicting setup changes are locked during setup work.
+- Managed setup files, caches, model files, and preferences are Git-ignored under
+  local-setup/. Partial files/build scratch are cleaned; verified caches retained.
+
+Verification on Windows / Python 3.12.14:
+- Full VIDRICK_TEST_TK=1 suite: 240 tests run, 236 passed, 4 POSIX-only skipped.
+- 29 setup I/O tests: pinned sizes/checksums, HTTPS/redirect policies, truncated
+  downloads, cancellation, prior-file preservation, archive path/link/device/
+  duplicate/size restrictions, atomic preferences, and cleanup-error reporting.
+- 29 setup service tests: host guard, no-download missing-toolchain path, build
+  command arguments with spaces, receipt tampering/reuse, cancelled/failed
+  setup preserving selection, and real synthetic subprocess stop/deadline/log
+  limits. All actual build/download operations in these tests are mocked.
+- 20 real Tk setup tests: both tabs at 600x560, manual path drafts/cancellation,
+  saved selections, progress/cancel/retry, one-time preference commit, persistence
+  failures, close-dialog races, Editor usability, and cleanup-before-app-close.
+  These 20 also passed after moving Engine & Models into the visible header.
+- Syntax parsing passed for all 26 package/test Python files.
+- Opaque Windows setup dialog visually inspected at 600x560; controls fit.
+- No local-setup/ directory was created by the Windows preview/test suite.
+- Independent review fixed cleanup-error cancellation masking, private compiler
+  temporary folders, malformed receipt handling, and selection commit races.
+
+Source/reference verification (read-only research):
+- Official release APIs and model metadata supplied versions, hashes and sizes.
+- Whisper, CMake, and FFmpeg archives inspected; source digests recomputed.
+- FFmpeg release signature verified using its official published signing key.
+- CMake arm64 Mach-O/platform dependencies inspected without executing it.
+- Research temporary source/signature files were removed. No downloaded engine,
+  compiler, model, or media converter was executed on this Windows machine.
+
+Not yet verified:
+Actual Apple installer behavior, native source compilation, Apple Silicon tool
+execution, FFmpeg decoding, model inference, real download performance, macOS
+filesystem locking, Aqua/file dialogs, and native close/process-group behavior.
+The setup screen is implemented; this is not a tested native installer release.
+No hosted builds, packaging, signing, notarization, friend testing, licensing
+integration, production account access, website, or Windows product changes.

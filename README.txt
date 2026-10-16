@@ -19,13 +19,16 @@ WHAT WORKS AT THIS STAGE
   Windows preview uses a separately styled Tk theme. Native rendering still
   needs Mac testing; this is not SwiftUI or a Liquid Glass implementation.
 - Multi-file browsing with clear filenames, selectable full-path details,
-  selection-aware remove/clear controls, and session-only settings.
+  selection-aware remove/clear controls, and remembered Mac engine/model paths.
 - Keyboard shortcuts for adding/selecting/removing files and opening settings.
 - A local transcript Editor with .txt Open/Save/Save As, find and replace,
   undo/redo, unsaved-change protection, word/character counts, and text sizing.
 - One-recording local transcription on native arm64 macOS using an existing
   whisper.cpp engine/model, with genuine engine progress, cancellation, and
   a finished transcript that opens as an unsaved document in the Editor.
+- In-app engine/model setup: choose a model, download verified components,
+  build local tools, and retain setup across launches. Cancellation and retry
+  preserve the previous configuration. Native installation is not yet verified.
 - Clearly labeled Insights, History, and About & Updates placeholder panels.
 - A separately labeled Windows development preview of that same small UI.
 - A separate future Mac-preview data path. It is calculated, not created.
@@ -34,8 +37,9 @@ WHAT WORKS AT THIS STAGE
 WHAT DOES NOT HAPPEN
 Choosing a recording only adds its path to the list. On the Mac, Start reads
 the one selected recording and may create a temporary converted audio file.
-The app does not upload recordings or download engines/models. The Windows
-UI preview never starts transcription or reads selected recording contents.
+The app does not upload recordings. Downloads begin only after clicking Set Up
+on a Mac. The Windows UI preview never downloads or installs setup components,
+starts transcription, saves setup preferences, or reads selected recordings.
 The Editor reads and writes only the .txt files you explicitly open or save.
 There are no bundled models, production account connections, license
 requests, analytics, or updates. No Windows source,
@@ -113,8 +117,9 @@ library; no assets or extra dependencies are downloaded. Aqua keeps its
 native button rendering on macOS.
 Formatted exports, recording output-folder selection, account management,
 and updates remain unavailable. Drag and drop is not implemented.
-Recording paths and settings disappear when the preview closes; only text
-explicitly saved from the Editor persists.
+Recording selections, language/task choices, and window preferences are temporary.
+On a Mac, successful setup paths are saved locally for the next launch. Text
+persists only when explicitly saved from the Editor.
 This is not a Mac emulator or a full port of the Windows app. Appearance,
 installation, Apple-chip performance, and Mac compatibility still need a Mac.
 It never uses the installed Windows Vidrick app or its project, data, models,
@@ -210,16 +215,17 @@ This is a development integration, not a licensed product release. No friend
 testing, packaging, model distribution, or licensing integration is enabled
 by a push. Production licensing must be integrated before distribution.
 
-On a native arm64 Mac, provide your own installed whisper.cpp whisper-cli
-executable and a compatible local GGML .bin model. Use a multilingual model
-for non-English languages or translation. The adapter was written against
-the v1.9.5 CLI protocol; it has not yet been run with a real model on a Mac:
+On a native arm64 Mac, open Transcribe > Engine & Models. Easy setup
+prepares whisper.cpp and FFmpeg and downloads the selected multilingual model.
+Use existing files is available for an installed whisper-cli, local GGML .bin
+model, and optional FFmpeg. Those paths are saved only after Use These Files.
+The adapter targets the v1.9.5 CLI protocol; actual native build and inference
+are still unverified:
 https://github.com/ggml-org/whisper.cpp/tree/v1.9.5
 https://github.com/ggml-org/whisper.cpp/blob/v1.9.5/examples/cli/cli.cpp
 
-In Transcribe, scroll down to Local engine setup and choose the executable
-and model. Select FFmpeg as well for MP3, M4A, MP4, MOV, FLAC, OGG, AAC, WMA,
-WebM, MKV, AIFF, or WAV needing conversion. A nonempty 16-bit mono PCM WAV
+FFmpeg handles MP3, M4A, MP4, MOV, FLAC, OGG, AAC, WMA, WebM, MKV, AIFF, or
+WAV needing conversion. A nonempty 16-bit mono PCM WAV
 at 16 kHz can go directly to the engine. Only local regular files are accepted.
 FFmpeg inputs use the selected extension's media demuxer with network
 protocols excluded; conversion produces a temporary mono 16 kHz PCM WAV.
@@ -253,9 +259,57 @@ If a process cannot be confirmed stopped, its job files are kept and Details
 explains where they are. Cleanup failures keep the window open with an error.
 An OS/app crash may also leave temporary files; there is no crash recovery.
 There is no automatic history, batch processing, playback, speaker separation,
-or Word/SRT/VTT export yet. Engine paths/settings last only for this session.
-Store any developer tools/models in local-tools/ and models/ (both ignored)
-if keeping them inside this project. Never commit recordings or model files.
+or Word/SRT/VTT export yet. Never commit recordings, models, or local preferences.
+
+IN-APP ENGINE AND MODEL SETUP
+Easy setup has three multilingual choices:
+  Fast (Tiny):       about 78 MB
+  Balanced (Base):  about 148 MB, the starting recommendation
+  Detailed (Small): about 488 MB, larger and slower to process
+
+The first setup additionally downloads about 108 MB of tools and sources.
+Allow at least 4 GB of free space and several minutes for local compilation.
+Apple's developer tools may need an additional download managed by macOS.
+No benchmark or minimum macOS release has been validated for this app yet.
+
+Choose Set Up on This Mac to download, build, check, and select the components.
+If Details reports missing Apple developer tools, choose Install Apple tools,
+complete Apple's own installer, then run setup again. There are no Terminal,
+Homebrew, pip, sudo, or global package installation steps in this flow. Apple's
+installer is a separate system process and is not cancelled by closing Vidrick.
+https://developer.apple.com/library/archive/technotes/tn2339/_index.html
+
+Downloads use pinned versions, exact sizes, and SHA-256 verification:
+- whisper.cpp v1.9.5 source commit d1be6fde11ac6e0407606b4e42fe72d34add8037.
+- CMake 3.31.12 portable Mac CLI from Kitware's official release. Only its CLI
+  and build modules are extracted; no system installation occurs.
+  https://github.com/Kitware/CMake/releases/tag/v3.31.12
+- FFmpeg 9.0.2 official source, built with network and external dependency
+  discovery disabled. The adapter only needs local media to PCM WAV conversion.
+  https://ffmpeg.org/download.html
+- GGML models from ggerganov/whisper.cpp at immutable Hugging Face revision
+  5359861c739e955e79d9a303bcbc70fb988958b1.
+  https://huggingface.co/ggerganov/whisper.cpp/tree/5359861c739e955e79d9a303bcbc70fb988958b1
+
+The progress bar measures the current file download/check. Compilation uses
+indeterminate progress and names the current stage. Cancel waits for active
+work to stop; the Editor remains usable. A failed download/build or cancelled
+setup keeps the prior selection. A failure to stop or clean up remains visible
+under Details. Close also waits for setup cleanup before checking Editor edits.
+
+Managed files live under this project's ignored local-setup/ directory:
+downloads/ holds verified retry files, tools/ holds versioned executables and
+licenses, models/ holds models, work/ holds temporary builds, and selection.json
+stores chosen paths. Verified downloads/tools can remain after cancellation;
+partial downloads and normal build scratch space are removed. A process-stop
+or cleanup failure can retain scratch files and reports the next step.
+There is no background updater, startup network request, download resumption
+for partial files, or automatic removal of older model/tool versions.
+
+Opening Set Up again lets you switch models; verified tools and downloads are
+reused. Manual files are left where you selected them. Moving or removing those
+files requires choosing new paths. Windows mode can preview this screen but
+all setup installation, persistence, and execution actions remain disabled.
 
 SEPARATION FROM WINDOWS
 Windows reference: C:\Vidrick_AI_Transcriber_4.3 - Main

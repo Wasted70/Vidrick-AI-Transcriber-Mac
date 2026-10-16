@@ -3,6 +3,7 @@
 from .preview_model import COLORS as C, display_filename
 from .transcription import JobSpec, TranscriptionError
 from .transcription_job import JobManager
+from .setup_panel import SetupPanel
 
 
 LANGUAGES = {"Auto-detect": "auto", "English": "en", "Spanish": "es", "French": "fr",
@@ -31,6 +32,7 @@ class TranscriptionPanel:
         self.status = self.tk.StringVar(value="Ready when you are")
         self.detail = self.tk.StringVar(value="One selected recording at a time. Results open in the Editor.")
         self.bar_mode = None
+        self.setup = SetupPanel(self)
 
     @property
     def blocked(self):
@@ -54,22 +56,7 @@ class TranscriptionPanel:
         self.ui.note(form, "Save the finished text from the Editor. Speaker labels and insights are planned.",
                      size=9).grid(row=row+1, column=0, sticky="ew", pady=(0, 8))
         row += 2
-        self.ui._form_section(form, "Local engine setup", row)
-        row += 1
-        for title, variable, kind in (("Whisper executable", self.engine, "engine"),
-                                       ("Whisper model (.bin)", self.model, "model"),
-                                       ("FFmpeg · optional for WAV", self.converter, "converter")):
-            self.ui.label(form, title, size=10).grid(row=row, column=0, sticky="w", pady=(0, 5))
-            control = self.ttk.Entry(form, textvariable=variable, state="readonly", width=18)
-            control.grid(row=row+1, column=0, sticky="ew")
-            button = self.ui.button(form, "Choose…", lambda v=variable, k=kind: self.choose_tool(v, k))
-            button.grid(row=row+2, column=0, sticky="w", pady=(5, 12))
-            self.controls.append((button, "normal"))
-            variable.trace_add("write", lambda *_: self.update_controls())
-            row += 3
-        self.ui.note(form, "Choose existing local tools and a model. CPU processing on Apple Silicon. "
-                     "Nothing downloads automatically; setup lasts for this session.", size=9).grid(
-                         row=row, column=0, sticky="ew", pady=(0, 8))
+        self.setup.build_summary(form, row)
 
     def build_start(self, parent):
         self.start_button = self.ui.button(parent, "Transcribe selected file", self.start, primary=True)
@@ -101,7 +88,7 @@ class TranscriptionPanel:
         self.update_controls()
 
     def choose_tool(self, variable, kind):
-        if self.blocked or self.running:
+        if self.blocked or self.running or self.setup.running:
             return
         self.ui._file_dialog_open = True
         try:
@@ -122,20 +109,23 @@ class TranscriptionPanel:
             reason = "Windows UI preview · transcription requires an Apple Silicon Mac."
         elif self.running:
             reason = "This recording is running. You can keep using the Editor."
+        elif self.setup.running:
+            reason = "Finish or cancel setup before starting transcription."
         elif self.pending is not None:
             reason = "Open or discard the finished result before starting another."
         elif count != 1:
             reason = "Select one recording to transcribe."
         elif not self.engine.get() or not self.model.get():
-            reason = "Choose a local Whisper executable and model below."
+            reason = "Open Engine & Models to prepare this Mac."
         else:
             reason = "Ready · processes only the selected recording."
-        ready = (not self.ui.windows_preview and not self.running and self.pending is None
+        ready = (not self.ui.windows_preview and not self.running and not self.setup.running and self.pending is None
                  and count == 1 and bool(self.engine.get()) and bool(self.model.get()))
         self.start_button.configure(state="normal" if ready else "disabled")
         self.readiness.set(reason)
         for control, normal in self.controls:
-            control.configure(state="disabled" if self.running else normal)
+            control.configure(state="disabled" if self.running or self.setup.running else normal)
+        self.setup.refresh_controls()
         if not hasattr(self, "cancel_button"):
             return
         for button in (self.cancel_button, self.open_button, self.discard_button, self.details_button):
@@ -151,7 +141,7 @@ class TranscriptionPanel:
             self.details_button.pack(fill="x", pady=2)
 
     def start(self):
-        if self.ui.windows_preview or self.running or self.pending is not None or self.blocked:
+        if self.ui.windows_preview or self.running or self.setup.running or self.pending is not None or self.blocked:
             return False
         selected = self.ui._selected_file_indices()
         if len(selected) != 1 or not self.engine.get() or not self.model.get():
@@ -296,6 +286,8 @@ class TranscriptionPanel:
             self.ui._file_dialog_open = False
 
     def allow_close(self):
+        if not self.setup.allow_close(app=True):
+            return False
         if self.blocked:
             return False
         if self.running:
@@ -318,6 +310,7 @@ class TranscriptionPanel:
         return True
 
     def dispose(self):
+        self.setup.dispose()
         if self.poll_id is not None:
             self.root.after_cancel(self.poll_id)
             self.poll_id = None

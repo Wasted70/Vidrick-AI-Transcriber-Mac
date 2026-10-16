@@ -503,7 +503,8 @@ class PreviewUI:
         right.columnconfigure(0, weight=1)
         right.rowconfigure(2, weight=1)
         self.label(right, "Transcription settings", size=12, bold=True).grid(row=0, column=0, sticky="w")
-        self.label(right, "One recording at a time", size=9, muted=True).grid(row=1, column=0, sticky="w", pady=(4, 12))
+        self.pipeline.setup.setup_button = self.button(right, "Engine & Models…", self.pipeline.setup.open)
+        self.pipeline.setup.setup_button.grid(row=1, column=0, columnspan=2, sticky="ew", pady=(8, 12))
         self.settings_canvas = self.tk.Canvas(right, bg=C["card"], highlightthickness=1,
                                              highlightbackground=C["card"], highlightcolor=C["accent"],
                                              width=244, takefocus=True)
@@ -720,8 +721,8 @@ class PreviewUI:
         self.label(body, f"Development prototype {__version__}", size=10, muted=True).pack(anchor="w", pady=(6, 20))
         self.note(body, "Designed for Apple Silicon. Native Mac testing is still required.").pack(fill="x", pady=(0, 12))
         self.note(body, "A local text editor and a development transcription pipeline for Apple Silicon. "
-                  "Choose an existing Whisper engine and model on your Mac. The Windows mode previews the UI only. "
-                  "Model downloads, formatted exports, licensing, and automatic updates are not connected.").pack(fill="x", pady=(0, 24))
+                  "Set up the engine and models inside the app on your Mac. The Windows mode previews the UI only. "
+                  "Formatted exports, licensing, and automatic updates are not connected.").pack(fill="x", pady=(0, 24))
         self.tk.Frame(body, bg=C["border"], height=1).pack(fill="x", pady=(0, 20))
         self.label(body, "Account & updates", size=13, bold=True).pack(anchor="w", pady=(0, 8))
         self.note(body, "No customer account or license is accessed in this preview.").pack(fill="x", pady=(0, 16))
