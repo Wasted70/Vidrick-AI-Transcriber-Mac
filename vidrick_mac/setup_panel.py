@@ -116,9 +116,9 @@ class SetupPanel:
         self.window.rowconfigure(1, weight=1)
         heading = self.tk.Frame(self.window, bg=C["window"], padx=22, pady=16)
         heading.grid(row=0, column=0, sticky="ew")
-        self.ui.label(heading, "Engine & Models", bg=C["window"], size=21, bold=True).pack(anchor="w")
+        self.ui.label(heading, "Engine & Models", bg=C["window"], size=16, bold=True).pack(anchor="w")
         self.ui.note(heading, "Prepare this Mac for local transcription.", bg=C["window"]).pack(fill="x", pady=(5, 0))
-        self.notebook = self.ttk.Notebook(self.window)
+        self.notebook = self.ttk.Notebook(self.window, style="Preview.TNotebook")
         self.notebook.grid(row=1, column=0, sticky="nsew", padx=22)
         automatic = self.tk.Frame(self.notebook, bg=C["card"], padx=18, pady=14)
         existing = self.tk.Frame(self.notebook, bg=C["card"], padx=18, pady=14)
@@ -178,7 +178,8 @@ class SetupPanel:
                                               ("converter", "FFmpeg (optional for PCM WAV)"))):
             self.manual[key].set(getattr(self.pipeline, key).get())
             self.ui.label(parent, title, size=10).grid(row=index*2, column=0, sticky="w", pady=(0, 4))
-            entry = self.ttk.Entry(parent, textvariable=self.manual[key], state="readonly", width=30)
+            entry = self.ttk.Entry(parent, textvariable=self.manual[key], state="readonly", width=30,
+                                   style="Preview.TEntry")
             entry.grid(row=index*2+1, column=0, sticky="ew", pady=(0, 10), padx=(0, 8))
             button = self.ui.button(parent, "Choose…", lambda k=key: self.choose_existing(k))
             button.grid(row=index*2+1, column=1, pady=(0, 10))

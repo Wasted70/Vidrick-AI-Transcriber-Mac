@@ -32,7 +32,7 @@ class PreviewUI:
         self.state = PreviewState()
         self.files_summary = tk.StringVar(value=self.state.summary)
         self.page_title = tk.StringVar(value="Transcribe")
-        self.transparency = tk.BooleanVar(value=True)
+        self.transparency = tk.BooleanVar(value=False)
         self.transparency_available = True
         self.style_images = []
         self.variables = []
@@ -55,7 +55,7 @@ class PreviewUI:
         main.rowconfigure(1, weight=1)
         self._header(main)
         self.content = tk.Frame(main, bg=C["window"])
-        self.content.grid(row=1, column=0, sticky="nsew", padx=22, pady=20)
+        self.content.grid(row=1, column=0, sticky="nsew", padx=20, pady=(6, 16))
         self.content.columnconfigure(0, weight=1)
         self.content.rowconfigure(0, weight=1)
         for name in PREVIEW_TABS:
@@ -99,15 +99,16 @@ class PreviewUI:
         themes = style.theme_names()
         native_theme = not self.windows_preview and "aqua" in themes
         style.theme_use("aqua" if native_theme else "clam")
-        style.configure("Preview.Treeview", font=(self.family, 11, "bold"), rowheight=32)
+        style.configure("Preview.Treeview", font=(self.family, 10), rowheight=28)
+        style.configure("Preview.Treeview.Heading", font=(self.family, 9))
         if native_theme:
             # Aqua owns control colors; a custom white foreground can disappear
             # on its native light button face, which ignores background colors.
             for name in ("Preview.TButton", "Primary.Preview.TButton", "Preview.TCombobox",
                          "Preview.TCheckbutton", "Header.Preview.TCheckbutton"):
-                style.configure(name, font=(self.family, 11))
+                style.configure(name, font=(self.family, 10))
             return
-        style.configure("Preview.TButton", font=(self.family, 10), padding=(12, 6),
+        style.configure("Preview.TButton", font=(self.family, 10), padding=(10, 4),
                         background=C["card"], foreground=C["text"],
                         bordercolor=C["border"], lightcolor=C["card"], darkcolor=C["border"],
                         focuscolor=C["accent"], borderwidth=1, relief="flat")
@@ -122,13 +123,13 @@ class PreviewUI:
                   bordercolor=[("disabled", C["border"])])
         style.configure("Preview.TCombobox", foreground=C["text"], fieldbackground=C["card"],
                         background=C["window"], arrowcolor=C["muted"], bordercolor=C["border"],
-                        lightcolor=C["border"], darkcolor=C["border"], padding=5, font=(self.family, 10))
+                        lightcolor=C["border"], darkcolor=C["border"], padding=3, font=(self.family, 10))
         style.map("Preview.TCombobox", fieldbackground=[("readonly", C["card"])],
                   foreground=[("disabled", C["muted"]), ("readonly", C["text"])],
                   selectbackground=[("readonly", C["card"])], selectforeground=[("readonly", C["text"])],
                   bordercolor=[("focus", C["accent"])])
         style.configure("Preview.TCheckbutton", background=C["card"], foreground=C["text"],
-                        font=(self.family, 10), focuscolor=C["accent"], padding=(0, 4))
+                        font=(self.family, 10), focuscolor=C["accent"], padding=(0, 2))
         style.map("Preview.TCheckbutton", background=[("active", C["card"])])
         style.configure("Header.Preview.TCheckbutton", background=C["header"])
         style.map("Header.Preview.TCheckbutton", background=[("active", C["header"])])
@@ -140,7 +141,19 @@ class PreviewUI:
                         lightcolor=C["accent"], darkcolor=C["accent"], thickness=8)
         style.map("Preview.Treeview", background=[("selected", C["selected"])],
                   foreground=[("selected", C["text"])], bordercolor=[("focus", C["accent"])])
-        self._bubble_buttons(style)
+        style.configure("Preview.Treeview.Heading", background=C["panel_alt"], foreground=C["muted"],
+                        relief="flat", padding=(8, 5), borderwidth=0)
+        style.map("Preview.Treeview.Heading", background=[("active", C["panel"])])
+        style.configure("Preview.TEntry", foreground=C["text"], fieldbackground=C["card"],
+                        bordercolor=C["border"], lightcolor=C["border"], darkcolor=C["border"], padding=4)
+        style.map("Preview.TEntry", bordercolor=[("focus", C["accent"])])
+        style.configure("Preview.TNotebook", background=C["window"], borderwidth=0,
+                        bordercolor=C["border"], lightcolor=C["border"], darkcolor=C["border"])
+        style.configure("Preview.TNotebook.Tab", background=C["panel"], foreground=C["muted"],
+                        font=(self.family, 10), padding=(12, 6), borderwidth=0)
+        style.map("Preview.TNotebook.Tab", background=[("selected", C["card"]), ("active", C["card_hover"])],
+                  foreground=[("selected", C["text"])])
+        self._rounded_buttons(style)
         for orientation in ("Vertical", "Horizontal"):
             style.configure(f"Preview.{orientation}.TScrollbar", background=C["border"],
                             troughcolor=C["card"], bordercolor=C["card"], arrowcolor=C["muted"],
@@ -150,10 +163,10 @@ class PreviewUI:
         self.root.option_add("*TCombobox*Listbox.selectBackground", C["selected"])
         self.root.option_add("*TCombobox*Listbox.selectForeground", C["text"])
 
-    def _bubble_buttons(self, style):
+    def _rounded_buttons(self, style):
         """Keep ttk interaction semantics while rounding the preview theme."""
         for name, normal, hover, edge in (
-            ("Preview.TButton", "#eef3fc", C["card_hover"], C["border"]),
+            ("Preview.TButton", C["card"], C["card_hover"], C["border"]),
             ("Primary.Preview.TButton", C["accent"], C["accent_hover"], C["accent"]),
         ):
             images = []
@@ -166,19 +179,19 @@ class PreviewUI:
             style.element_create(element, "image", images[0],
                                  ("disabled", images[3]), ("pressed", images[2]),
                                  ("focus", images[4]), ("active", images[1]),
-                                 border=18, padding=0, sticky="nsew")
+                                 border=7, padding=0, sticky="nsew")
             style.layout(name, [(element, {"sticky": "nsew", "children": [
                 ("Button.focus", {"sticky": "nsew", "children": [
                     ("Button.padding", {"sticky": "nsew", "children": [
                         ("Button.label", {"sticky": "nsew"})]})]})]})])
             # Transparent image corners must reveal the surface, never a
-            # rectangular accent-colored ttk background underneath the pill.
-            style.configure(name, padding=(14, 7), background=C["card"])
+            # rectangular accent-colored ttk background underneath the corners.
+            style.configure(name, padding=(10, 4), background=C["card"])
             style.map(name, background=[("disabled", C["card"]), ("!disabled", C["card"])])
 
     def _apply_transparency(self):
         """Whole-window opacity only; never blur or read the desktop behind it."""
-        desired = 0.97 if self.transparency.get() else 1.0
+        desired = 0.985 if self.transparency.get() else 1.0
         try:
             self.root.attributes("-alpha", desired)
             applied = float(self.root.attributes("-alpha"))
@@ -228,8 +241,8 @@ class PreviewUI:
                                      x, h, x, h-r, x, y+r, x, y,
                                      smooth=True, splinesteps=32, **options)
 
-    def card(self, parent, *, fill=None, background=None, padding=20):
-        """Soft glass-like surface; opacity is managed by the window separately."""
+    def card(self, parent, *, fill=None, background=None, padding=16):
+        """Quiet grouped surface; native window controls remain system-owned."""
         fill = fill or C["card"]
         shell = self.tk.Frame(parent, bg=background or C["window"])
         canvas = self.tk.Canvas(shell, bg=background or C["window"], highlightthickness=0)
@@ -242,11 +255,9 @@ class PreviewUI:
             if w < 4 or h < 4:
                 return
             canvas.delete("card")
-            self._round_rect(canvas, 1, 4, w, h, 44, fill=C["shadow"], outline="", tags="card")
-            self._round_rect(canvas, 1, 1, w, h-3, 44, fill=fill,
+            self._round_rect(canvas, 1, 2, w, h, 12, fill=C["shadow"], outline="", tags="card")
+            self._round_rect(canvas, 1, 1, w, h-1, 12, fill=fill,
                              outline=C["border"], width=1, tags="card")
-            self._round_rect(canvas, 2, 2, w-1, h-4, 42, fill="",
-                             outline=C["highlight"], width=1, tags="card")
         canvas.bind("<Configure>", paint)
         return shell, body
 
@@ -280,47 +291,47 @@ class PreviewUI:
         return canvas
 
     def _navigation(self):
-        sidebar = self.tk.Frame(self.root, bg=C["sidebar"], width=194)
+        sidebar = self.tk.Frame(self.root, bg=C["sidebar"], width=184)
         sidebar.grid(row=0, column=0, sticky="nsew")
         sidebar.grid_propagate(False)
         sidebar.columnconfigure(0, weight=1)
         sidebar.rowconfigure(2, weight=1)
         brand = self.tk.Frame(sidebar, bg=C["sidebar"])
-        brand.grid(row=0, column=0, sticky="ew", padx=20, pady=(24, 27))
-        self._icon(brand, "wave", size=30, bg=C["sidebar"]).pack(side="left", padx=(0, 10))
+        brand.grid(row=0, column=0, sticky="ew", padx=18, pady=(22, 27))
+        self._icon(brand, "wave", size=24, bg=C["sidebar"]).pack(side="left", padx=(0, 8))
         words = self.tk.Frame(brand, bg=C["sidebar"])
         words.pack(side="left")
-        self.label(words, "Vidrick", bg=C["sidebar"], size=17, bold=True).pack(anchor="w")
-        self.label(words, "for Mac", bg=C["sidebar"], size=10, muted=True).pack(anchor="w")
+        self.label(words, "Vidrick", bg=C["sidebar"], size=13, bold=True).pack(anchor="w")
+        self.label(words, "Transcriber", bg=C["sidebar"], size=9, muted=True).pack(anchor="w")
         group = self.tk.Frame(sidebar, bg=C["sidebar"])
         group.grid(row=1, column=0, sticky="ew", padx=8)
         self.label(group, "Workspace", bg=C["sidebar"], size=9, bold=True, muted=True).pack(
-            anchor="w", padx=12, pady=(0, 8))
+            anchor="w", padx=12, pady=(0, 6))
         bottom = self.tk.Frame(sidebar, bg=C["sidebar"])
         bottom.grid(row=3, column=0, sticky="ew", padx=8, pady=(10, 18))
         for name, kind in zip(PREVIEW_TABS, ("wave", "editor", "insights", "history", "info")):
             shell = self.tk.Frame(bottom if name == "About & Updates" else group, bg=C["sidebar"])
-            shell.pack(fill="x", pady=3)
+            shell.pack(fill="x", pady=1)
             canvas = self.tk.Canvas(shell, bg=C["sidebar"], highlightthickness=0)
             canvas.place(x=0, y=0, relwidth=1, relheight=1)
             self.tab_canvases[name], self.tab_fills[name] = canvas, C["sidebar"]
 
             def paint(event, tab=name, surface=canvas):
                 surface.delete("pill")
-                self._round_rect(surface, 0, 0, event.width, event.height, 36,
+                self._round_rect(surface, 0, 0, event.width, event.height, 8,
                                  fill=self.tab_fills[tab], outline="", tags="pill")
 
             canvas.bind("<Configure>", paint)
             canvas.bind("<Button-1>", lambda event, tab=name: self.select_tab(tab))
             row = self.tk.Frame(shell, bg=C["sidebar"])
-            row.pack(fill="x", padx=12, pady=4)
-            icon = self._icon(row, kind, size=19, bg=C["sidebar"])
+            row.pack(fill="x", padx=10, pady=2)
+            icon = self._icon(row, kind, size=17, bg=C["sidebar"])
             icon.pack(side="left", padx=(0, 6))
             icon.bind("<Button-1>", lambda event, tab=name: self.select_tab(tab))
             button = self.tk.Button(row, text=name, command=lambda tab=name: self.select_tab(tab),
                                     font=(self.family, 10), bg=C["sidebar"], fg=C["text"],
-                                    activebackground=C["selected"], activeforeground=C["text"],
-                                    relief="flat", borderwidth=0, anchor="w", padx=2, pady=7,
+                                    activebackground=C["sidebar_selected"], activeforeground=C["text"],
+                                    relief="flat", borderwidth=0, anchor="w", padx=2, pady=5,
                                     highlightthickness=1, highlightbackground=C["sidebar"],
                                     highlightcolor=C["accent"], takefocus=True)
             button.pack(side="left", fill="x", expand=True)
@@ -329,19 +340,19 @@ class PreviewUI:
             anchor="w", padx=10, pady=(12, 0))
 
     def _header(self, parent):
-        shell, toolbar = self.card(parent, fill=C["header"], padding=12)
-        shell.grid(row=0, column=0, sticky="ew", padx=22, pady=(16, 0))
+        toolbar = self.tk.Frame(parent, bg=C["header"], padx=20, pady=16)
+        toolbar.grid(row=0, column=0, sticky="ew")
         toolbar.columnconfigure(0, weight=1)
-        self.label(toolbar, textvariable=self.page_title, bg=C["header"], size=14, bold=True).grid(
+        self.label(toolbar, textvariable=self.page_title, bg=C["header"], size=13, bold=True).grid(
             row=0, column=0, sticky="w")
         self.transparency_control = self.ttk.Checkbutton(
             toolbar, text="Transparency", variable=self.transparency, command=self._apply_transparency,
             style="Header.Preview.TCheckbutton", takefocus=True)
-        self.transparency_control.grid(row=0, column=1, padx=(12, 16))
-        self.button(toolbar, "Settings", self.show_settings).grid(row=0, column=2, sticky="e")
+        self.transparency_control.grid(row=0, column=1, padx=(12, 12))
+        self.button(toolbar, "Settings…", self.show_settings).grid(row=0, column=2, sticky="e")
 
     def _preview_notice(self, parent):
-        notice = self.tk.Frame(parent, bg=C["header"], padx=22, pady=9)
+        notice = self.tk.Frame(parent, bg=C["header"], padx=20, pady=6)
         notice.grid(row=2, column=0, sticky="ew")
         mode = ("Windows development preview - not a Mac compatibility test" if self.windows_preview
                 else "Apple Silicon development app - not a production release")
@@ -371,7 +382,7 @@ class PreviewUI:
                 ("Windows UI preview only." if self.windows_preview else "Local processing on your Mac."))
         self.page_title.set(name)
         for tab, button in self.tab_buttons.items():
-            color = C["selected"] if name == tab else C["sidebar"]
+            color = C["sidebar_selected"] if name == tab else C["sidebar"]
             button.configure(bg=color, activebackground=color, highlightbackground=color,
                              font=(self.family, 10, "bold" if name == tab else "normal"))
             self.tab_fills[tab] = color
@@ -468,20 +479,20 @@ class PreviewUI:
     def _transcribe(self, page):
         page.columnconfigure(0, weight=1)
         page.rowconfigure(1, weight=1)
-        self.label(page, "New transcription", bg=C["window"], size=22, bold=True).grid(
-            row=0, column=0, sticky="w", pady=(0, 18))
+        self.label(page, "New transcription", bg=C["window"], size=16, bold=True).grid(
+            row=0, column=0, sticky="w", pady=(0, 12))
         workspace = self.tk.Frame(page, bg=C["window"])
         workspace.grid(row=1, column=0, sticky="nsew")
         workspace.columnconfigure(0, weight=1)
-        workspace.columnconfigure(1, minsize=294)
+        workspace.columnconfigure(1, minsize=274)
         workspace.rowconfigure(0, weight=1)
         left_shell, left = self.card(workspace)
-        left_shell.grid(row=0, column=0, sticky="nsew", padx=(0, 16))
+        left_shell.grid(row=0, column=0, sticky="nsew", padx=(0, 12))
         left.columnconfigure(0, weight=1)
         left.rowconfigure(2, weight=1)
         heading = self.tk.Frame(left, bg=C["card"])
         heading.grid(row=0, column=0, sticky="ew")
-        self.label(heading, "Files", size=13, bold=True).pack(side="left")
+        self.label(heading, "Recordings", size=12, bold=True).pack(side="left")
         self.add_files_button = self.button(heading, "Add Files…", self.choose_files)
         self.add_files_button.pack(side="right")
         self.label(left, textvariable=self.files_summary, size=9, muted=True,
@@ -529,7 +540,8 @@ class PreviewUI:
         self.empty_files.rowconfigure((0, 2), weight=1)
         empty = self.tk.Frame(self.empty_files, bg=C["card"])
         empty.grid(row=1, column=0, sticky="ew", padx=8, pady=2)
-        self.label(empty, "Start with a recording", size=14, bold=True, anchor="center").pack(fill="x")
+        self._icon(empty, "wave", size=36).pack(pady=(0, 12))
+        self.label(empty, "Add a recording", size=13, bold=True, anchor="center").pack(fill="x")
         self.note(empty, "Choose audio or video, then select one file.", centered=True).pack(fill="x", pady=(8, 14))
         self.choose_files_button = self.button(empty, "Choose Files…", self.choose_files, primary=True)
         self.choose_files_button.pack()
@@ -543,12 +555,12 @@ class PreviewUI:
         right_shell.grid(row=0, column=1, sticky="nsew")
         right.columnconfigure(0, weight=1)
         right.rowconfigure(2, weight=1)
-        self.label(right, "Transcription settings", size=12, bold=True).grid(row=0, column=0, sticky="w")
+        self.label(right, "Options", size=12, bold=True).grid(row=0, column=0, sticky="w")
         self.pipeline.setup.setup_button = self.button(right, "Engine & Models…", self.pipeline.setup.open)
         self.pipeline.setup.setup_button.grid(row=1, column=0, columnspan=2, sticky="ew", pady=(8, 12))
         self.settings_canvas = self.tk.Canvas(right, bg=C["card"], highlightthickness=1,
                                              highlightbackground=C["card"], highlightcolor=C["accent"],
-                                             width=244, takefocus=True)
+                                             width=230, takefocus=True)
         self.settings_canvas.grid(row=2, column=0, sticky="nsew")
         scrollbar = self.ttk.Scrollbar(right, orient="vertical", command=self.settings_canvas.yview,
                                        style="Preview.Vertical.TScrollbar")
@@ -729,8 +741,8 @@ class PreviewUI:
     def _insights(self, page):
         page.columnconfigure(0, weight=1)
         page.rowconfigure((1, 2), weight=1, uniform="insights")
-        self.label(page, "A clearer view of your conversation", bg=C["window"], size=19, bold=True).grid(
-            row=0, column=0, sticky="w", pady=(0, 18))
+        self.label(page, "Conversation insights", bg=C["window"], size=16, bold=True).grid(
+            row=0, column=0, sticky="w", pady=(0, 12))
         for row, title, text in ((1, "Summary", "A summary of your transcript will appear here. No analysis has been run in this preview."),
                                   (2, "Action items & key points", "Insights are planned. Review and save your finished transcript in the Editor.")):
             shell, body = self.card(page)
@@ -746,7 +758,7 @@ class PreviewUI:
         shell, body = self.card(page)
         shell.pack(fill="both", expand=True)
         self._icon(body, "wave", size=48).pack(anchor="w", pady=(4, 16))
-        self.label(body, "Vidrick for Mac", size=23, bold=True).pack(anchor="w")
+        self.label(body, "Vidrick for Mac", size=18, bold=True).pack(anchor="w")
         self.label(body, f"Development prototype {__version__}", size=10, muted=True).pack(anchor="w", pady=(6, 20))
         self.note(body, "Designed for Apple Silicon. Native Mac testing is still required.").pack(fill="x", pady=(0, 12))
         self.note(body, "A local text editor and a development transcription pipeline for Apple Silicon. "

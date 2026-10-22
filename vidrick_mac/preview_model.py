@@ -7,12 +7,12 @@ from pathlib import PurePosixPath, PureWindowsPath
 
 # Independent Mac-preview palette. No shared Windows design files or assets.
 COLORS = {
-    "window": "#edf1f8", "header": "#f8faff", "panel": "#e8edf5",
-    "panel_alt": "#fbfcff", "card": "#fbfcff", "card_hover": "#e6effc",
-    "border": "#d5dfed", "accent": "#086bd8", "accent_hover": "#0059bb",
-    "accent_soft": "#e7f0fc", "text": "#202124", "muted": "#62646b",
-    "sidebar": "#e7edf7", "selected": "#d4e5fb", "on_accent": "#ffffff",
-    "shadow": "#dfe6f1", "highlight": "#ffffff",
+    "window": "#f5f5f7", "header": "#f5f5f7", "panel": "#ebebed",
+    "panel_alt": "#f7f7f8", "card": "#ffffff", "card_hover": "#f0f0f2",
+    "border": "#dcdce0", "accent": "#007aff", "accent_hover": "#0064d2",
+    "accent_soft": "#eaf2ff", "text": "#242426", "muted": "#6c6c72",
+    "sidebar": "#ededf0", "selected": "#dce9fb", "on_accent": "#ffffff",
+    "shadow": "#eaeaed", "highlight": "#ffffff", "sidebar_selected": "#dcdce1",
 }
 PREVIEW_TABS = ("Transcribe", "Editor", "Insights", "History", "About & Updates")
 

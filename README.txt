@@ -10,10 +10,10 @@ Windows remains the primary product. Nothing here changes the Windows app.
 WHAT WORKS AT THIS STAGE
 - A read-only command that checks macOS, native arm64 Python, Python version,
   and whether the optional Tk modules can be found.
-- A light Mac-style interface: navigation sidebar, compact toolbar, white
-  content surfaces, blue accents, and a separate transcription settings pane.
-- Soft rounded cards, sidebar selection pills, subtle highlights/shadows,
-  and rounded buttons in the Windows development preview.
+- A macOS-oriented desktop layout: neutral sidebar, integrated toolbar, white
+  grouped content, compact rounded controls, and restrained blue accents.
+- Smaller headings, regular-weight list rows, aligned Editor tools/status,
+  and alternating History rows in the Windows development preview.
 - Five sections: Transcribe, Editor, History, and placeholder Insights and About & Updates.
 - Platform system font; native Aqua controls are preferred on macOS. The
   Windows preview uses a separately styled Tk theme. Native rendering still
@@ -115,13 +115,18 @@ an overwrite decision. For a symbolic-link transcript, use Save As to a new
 regular .txt file. Local recovery drafts protect edits between explicit saves;
 see HISTORY AND DRAFT RECOVERY below for the recovery window and limits.
 
-The toolbar's Transparency checkbox adds a subtle effect at 97% window
-opacity. Uncheck it for a fully opaque window. This choice is temporary;
+The toolbar's optional Transparency checkbox adds a subtle effect at 98.5%
+window opacity. It starts off so reading surfaces are fully opaque. This choice is temporary;
 unsupported systems fall back to opaque mode. The effect applies to the
 whole window, including text; it is not background blur or native Liquid
 Glass. Rounded button artwork is generated in memory using the standard
 library; no assets or extra dependencies are downloaded. Aqua keeps its
-native button rendering on macOS.
+native button rendering on macOS. Native window decorations are retained:
+the Windows preview still has the Windows title bar. It does not simulate
+macOS window controls or implement native vibrancy. Sidebar/toolbar structure
+draws on Apple's macOS design guidance:
+https://developer.apple.com/design/human-interface-guidelines/designing-for-macos/
+https://developer.apple.com/design/human-interface-guidelines/toolbars
 Formatted exports, recording output-folder selection, account management,
 and updates remain unavailable. Drag and drop is not implemented.
 Recording selections, language/task choices, and window preferences are temporary.

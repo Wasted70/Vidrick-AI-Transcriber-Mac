@@ -453,3 +453,33 @@ transcription, and native crash behavior remain unverified. Recovery can lose
 the last few seconds before its next successful write; it is local storage,
 not an encrypted/cloud backup. No installer, release, hosted build, friend test,
 licensing integration, or production Windows/account/website change was made.
+
+MACOS DESKTOP VISUAL REFINEMENT - OCTOBER 22, 2026
+
+Reworked the interface toward macOS desktop conventions: neutral gray sidebar,
+integrated toolbar, white grouped surfaces, compact rounded buttons, smaller
+headings, system-font typography, and regular-weight table rows. Editor tools
+and status now align in compact rows; History has subtle alternating rows in
+the Windows preview. Setup search/path controls and tabs share the same style.
+
+Transparency is optional and off by default for clear reading surfaces; when
+enabled it uses 98.5% whole-window opacity. This is not native vibrancy or Liquid
+Glass. The real system titlebar remains, including Windows decorations in the
+Windows preview. Native Aqua control colors remain system-owned; custom light
+alternating-row backgrounds are applied only in the Windows preview to avoid
+overriding Aqua text/background contrast.
+
+Verification:
+- Full desktop suite: 322 tests run, 316 passed, 6 POSIX-only checks skipped.
+- All 32 package/test Python files parsed; git diff checks clean.
+- Actual Windows UI inspected at 940x640: Transcribe, populated sample History
+  with recovery, and Editor opening a saved sample. Setup dialog also inspected.
+- Existing compact layout, focus/keyboard, save/recovery, setup, and pipeline
+  tests pass. No new behavior-mirroring tests added for this visual-only pass.
+- Updated sample-data design preview opened for review, using an in-memory
+  library. No real recordings, model downloads, or setup operations were used.
+- Independent review identified Aqua alternate-row contrast risk; fixed before
+  final validation. Native macOS rendering and interaction remain unverified.
+
+All changes stay in the separate Mac repository. No Windows production files,
+licensing, account services, hosted builds, or releases were changed.

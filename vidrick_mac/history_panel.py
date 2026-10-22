@@ -30,18 +30,18 @@ class HistoryPanel:
         self.detail = ui.tk.StringVar(value="Open a saved result as an editable copy.")
         self.recovery_status = ui.tk.StringVar(value="")
 
-        shell, body = ui.card(parent, padding=16)
+        shell, body = ui.card(parent, padding=14)
         shell.pack(fill="both", expand=True)
         body.columnconfigure(0, weight=1)
         body.rowconfigure(2, weight=1)
-        ui.label(body, "Recent transcriptions", size=18, bold=True).grid(
-            row=0, column=0, sticky="w", pady=(0, 6))
+        ui.label(body, "Recent Transcriptions", size=13, bold=True).grid(
+            row=0, column=0, sticky="w", pady=(0, 10))
         search = ui.tk.Frame(body, bg=C["card"])
-        search.grid(row=1, column=0, sticky="ew", pady=(0, 6))
+        search.grid(row=1, column=0, sticky="ew", pady=(0, 8))
         search.columnconfigure(1, weight=1)
         ui.label(search, "Search", size=10, muted=True).grid(row=0, column=0, padx=(0, 8))
         self.search_entry = ui.ttk.Entry(search, textvariable=self.query, width=16,
-                                         font=(ui.family, 11))
+                                         font=(ui.family, 10), style="Preview.TEntry")
         self.search_entry.grid(row=0, column=1, sticky="ew")
         ui.button(search, "Refresh", self.retry_refresh).grid(row=0, column=2, padx=(8, 0))
 
@@ -51,6 +51,8 @@ class HistoryPanel:
         listing.rowconfigure(0, weight=1)
         self.tree = ui.ttk.Treeview(listing, columns=("date", "model"), show="tree headings",
                                     selectmode="browse", height=3, style="Preview.Treeview")
+        if ui.windows_preview:
+            self.tree.tag_configure("alternate", background=C["panel_alt"])
         self.tree.heading("#0", text="Transcript", anchor="w")
         self.tree.column("#0", width=250, minwidth=120, stretch=True)
         self.tree.heading("date", text="Created", anchor="w")
@@ -66,7 +68,7 @@ class HistoryPanel:
         self.tree.bind("<Return>", self._open_key)
         self.tree.bind("<Delete>", self._delete_key)
         status = ui.label(body, textvariable=self.status, size=10, muted=True, anchor="w")
-        status.grid(row=3, column=0, sticky="ew", pady=(4, 0))
+        status.grid(row=3, column=0, sticky="ew", pady=(6, 0))
         status.bind("<Configure>", lambda event: status.configure(wraplength=max(100, event.width - 4)))
         detail = ui.label(body, textvariable=self.detail, size=9, muted=True, anchor="w")
         detail.grid(row=4, column=0, sticky="ew", pady=(2, 6))
@@ -81,15 +83,15 @@ class HistoryPanel:
         self.delete_button.pack(side="left")
 
         self.recovery_frame = ui.tk.Frame(body, bg=C["card"])
-        self.recovery_frame.grid(row=6, column=0, sticky="ew", pady=(10, 0))
+        self.recovery_frame.grid(row=6, column=0, sticky="ew", pady=(12, 0))
         self.recovery_frame.columnconfigure(0, weight=1)
         ui.tk.Frame(self.recovery_frame, bg=C["border"], height=1).grid(
-            row=0, column=0, sticky="ew", pady=(0, 6))
+            row=0, column=0, sticky="ew", pady=(0, 8))
         recovery_actions = ui.tk.Frame(self.recovery_frame, bg=C["card"])
         recovery_actions.grid(row=1, column=0, sticky="ew")
         recovery_title = ui.tk.Frame(recovery_actions, bg=C["card"])
         recovery_title.pack(side="left")
-        ui.label(recovery_title, "Recover unsaved work", size=11, bold=True).pack(anchor="w")
+        ui.label(recovery_title, "Unsaved Work", size=11, bold=True).pack(anchor="w")
         ui.label(recovery_title, textvariable=self.recovery_status, size=9,
                  muted=True).pack(anchor="w")
         self.discard_button = ui.button(recovery_actions, "Discard…", self.discard_selected)
@@ -102,6 +104,8 @@ class HistoryPanel:
         self.recovery_tree = ui.ttk.Treeview(
             recovery_list, columns=("date",), show="tree headings", selectmode="browse",
             height=1, style="Preview.Treeview")
+        if ui.windows_preview:
+            self.recovery_tree.tag_configure("alternate", background=C["panel_alt"])
         self.recovery_tree.heading("#0", text="Draft", anchor="w")
         self.recovery_tree.heading("date", text="Last saved", anchor="w")
         self.recovery_tree.column("#0", width=300, minwidth=100, stretch=True)
@@ -197,10 +201,11 @@ class HistoryPanel:
         children = tree.get_children()
         if children:
             tree.delete(*children)
-        for item in records:
+        for index, item in enumerate(records):
             values = ((_date_label(item.created_at), _model_label(item.model)) if kind == "entry"
                       else (_date_label(item.updated_at),))
-            tree.insert("", "end", iid=item.id, text=item.title, values=values)
+            tree.insert("", "end", iid=item.id, text=item.title, values=values,
+                        tags=("alternate",) if index % 2 else ())
         if selected and tree.exists(selected[0]):
             tree.selection_set(selected[0])
             tree.focus(selected[0])

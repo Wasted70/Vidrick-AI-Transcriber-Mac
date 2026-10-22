@@ -6,7 +6,7 @@ import struct
 import zlib
 
 
-def rounded_surface(fill, edge, *, width=64, height=40, radius=18):
+def rounded_surface(fill, edge, *, width=48, height=28, radius=7):
     """Return a PNG for a ttk nine-slice border with antialiased corners."""
     colors = [tuple(int(color[i:i+2], 16) for i in (1, 3, 5)) for color in (fill, edge)]
     pixels = bytearray()

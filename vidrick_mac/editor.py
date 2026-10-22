@@ -39,31 +39,33 @@ class TranscriptEditor:
         self.match_case = self.tk.BooleanVar(value=False)
         self.match_label = self.tk.StringVar(value="Enter text to find")
         self.font_size = self.tk.StringVar(value="12")
-        shell, body = ui.card(parent)
+        shell, body = ui.card(parent, padding=14)
         shell.pack(fill="both", expand=True)
         body.columnconfigure(0, weight=1)
         body.rowconfigure(4, weight=1)
 
         toolbar = self.tk.Frame(body, bg=C["card"])
-        toolbar.grid(row=0, column=0, sticky="ew", pady=(0, 8))
-        ui.label(toolbar, "Transcript", size=18, bold=True).pack(side="left")
+        toolbar.grid(row=0, column=0, sticky="ew", pady=(0, 5))
+        ui.label(toolbar, "Transcript", size=13, bold=True).pack(side="left")
         ui.button(toolbar, "Save As…", self.save_as).pack(side="right")
         self.save_button = ui.button(toolbar, "Save", self.save, primary=True)
         self.save_button.pack(side="right", padx=6)
         ui.button(toolbar, "Open…", self.open).pack(side="right")
         self.name_label = ui.label(body, textvariable=self.document_label, size=10, muted=True)
-        self.name_label.grid(row=1, column=0, sticky="ew", pady=(0, 12))
+        self.name_label.grid(row=1, column=0, sticky="ew", pady=(0, 10))
         self.name_label.bind("<Configure>", lambda event: self.name_label.configure(
             wraplength=max(100, event.width - 4)))
 
         tools = self.tk.Frame(body, bg=C["card"])
-        tools.grid(row=2, column=0, sticky="ew", pady=(0, 12))
+        tools.grid(row=2, column=0, sticky="ew", pady=(0, 8))
         self.undo_button = ui.button(tools, "Undo", self.undo)
         self.undo_button.pack(side="left")
         self.redo_button = ui.button(tools, "Redo", self.redo)
-        self.redo_button.pack(side="left", padx=6)
+        self.redo_button.pack(side="left", padx=(4, 0))
         self.undo_button.configure(state="disabled")
         self.redo_button.configure(state="disabled")
+        self.tk.Frame(tools, bg=C["border"], width=1, height=18).pack(
+            side="left", padx=10)
         ui.button(tools, "Find & Replace", self.show_find).pack(side="left")
         size_box = self.ttk.Combobox(tools, textvariable=self.font_size,
                                     values=("12", "14", "16", "18", "20", "24"),
@@ -87,28 +89,34 @@ class TranscriptEditor:
             self.text.bind("<Control-y>", self.redo)
         self.text.edit_reset()
         self.text.edit_modified(False)
-        ui.label(body, textvariable=self.count_label, size=9, muted=True).grid(
-            row=5, column=0, sticky="w", pady=(10, 0))
-        ui.label(body, textvariable=self.recovery_status, size=9, muted=True).grid(
-            row=6, column=0, sticky="w", pady=(2, 0))
+        footer = self.tk.Frame(body, bg=C["card"])
+        footer.grid(row=5, column=0, sticky="ew", pady=(8, 0))
+        footer.columnconfigure((0, 1), weight=1)
+        ui.label(footer, textvariable=self.count_label, size=9, muted=True).grid(
+            row=0, column=0, sticky="w")
+        recovery = ui.label(footer, textvariable=self.recovery_status, size=9,
+                            muted=True, anchor="e", justify="right")
+        recovery.grid(row=0, column=1, sticky="ew", padx=(12, 0))
+        recovery.bind("<Configure>", lambda event: recovery.configure(
+            wraplength=max(100, event.width - 4)))
         self.find_text.trace_add("write", self._query_changed)
         self.match_case.trace_add("write", self._query_changed)
 
     def _build_find(self, body):
         ui = self.ui
         self.find_panel = self.tk.Frame(body, bg=C["card"])
-        self.find_panel.grid(row=3, column=0, sticky="ew", pady=(0, 12))
+        self.find_panel.grid(row=3, column=0, sticky="ew", pady=(0, 8))
         self.find_panel.columnconfigure(1, weight=1)
         ui.label(self.find_panel, "Find", size=10).grid(row=0, column=0, sticky="w", padx=(0, 8))
         self.find_entry = self.ttk.Entry(self.find_panel, textvariable=self.find_text,
-                                         width=10, font=(ui.family, 11))
+                                         width=10, font=(ui.family, 10), style="Preview.TEntry")
         self.find_entry.grid(row=0, column=1, sticky="ew", padx=(0, 8), pady=3)
         ui.button(self.find_panel, "Previous", self.find_previous).grid(row=0, column=2, padx=(0, 5))
         ui.button(self.find_panel, "Next", self.find_next).grid(row=0, column=3, padx=(0, 5))
         ui.button(self.find_panel, "Done", self.hide_find).grid(row=0, column=4)
         ui.label(self.find_panel, "Replace", size=10).grid(row=1, column=0, sticky="w", padx=(0, 8))
         self.replace_entry = self.ttk.Entry(self.find_panel, textvariable=self.replace_text,
-                                            width=10, font=(ui.family, 11))
+                                            width=10, font=(ui.family, 10), style="Preview.TEntry")
         self.replace_entry.grid(row=1, column=1, sticky="ew", padx=(0, 8), pady=3)
         ui.button(self.find_panel, "Replace", self.replace_current).grid(row=1, column=2, padx=(0, 5))
         ui.button(self.find_panel, "Replace All", self.replace_all).grid(
