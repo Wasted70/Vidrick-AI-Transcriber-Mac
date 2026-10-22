@@ -6,15 +6,25 @@ from .editor import TranscriptEditor
 from .preview_model import COLORS as C, PREVIEW_TABS, PreviewState, display_filename
 from .preview_style import rounded_surface
 from .transcription_panel import TranscriptionPanel
+from .history_store import HistoryStore, HistoryError
+from .history_panel import HistoryPanel
+from pathlib import Path
 
 
 class PreviewUI:
     """Local Mac workflow, with an explicitly non-transcribing Windows UI mode."""
 
-    def __init__(self, root, *, windows_preview, tk, ttk, filedialog, messagebox=None):
+    def __init__(self, root, *, windows_preview, tk, ttk, filedialog, messagebox=None,
+                 history_store=None, history_root=None):
         self.root, self.tk, self.ttk, self.filedialog = root, tk, ttk, filedialog
         self.messagebox = messagebox
         self.windows_preview = windows_preview
+        self.history_store = history_store
+        self.history_root = history_root
+        self.history_error = ""
+        self._disposed = False
+        self.ensure_history_store()
+        root.bind("<Destroy>", self._history_on_destroy, add="+")
         self.primary_key = "Control" if windows_preview else "Command"
         self.shortcut_label = "Ctrl+" if windows_preview else "⌘"
         self._file_dialog_open = False
@@ -58,12 +68,30 @@ class PreviewUI:
         self._history(self.pages["History"])
         self._about(self.pages["About & Updates"])
         self._preview_notice(main)
-        self.select_tab("Transcribe")
+        self.select_tab("History" if self.history_panel.has_recovery else "Transcribe")
         self._install_shortcuts()
         self._apply_transparency()
         root.protocol("WM_DELETE_WINDOW", self.close_preview)
         if root.tk.call("tk", "windowingsystem") == "aqua":
             root.createcommand("::tk::mac::Quit", self.close_preview)
+
+    def ensure_history_store(self):
+        """Retry unavailable local storage only on an explicit UI action."""
+        if self.history_store is None:
+            try:
+                self.history_store = HistoryStore(self.history_root)
+                self.history_error = ""
+                if hasattr(self, "editor_panel"):
+                    self.editor_panel.flush_recovery()
+            except HistoryError as exc:
+                self.history_error = str(exc)
+        return self.history_store is not None
+
+    def _history_on_destroy(self, event):
+        # Also release the library after failed UI construction or raw Tk
+        # destruction. Recovery remains intact unless close was approved.
+        if event.widget is self.root and self.history_store is not None:
+            self.history_store.close()
 
     def _styles(self):
         style = self.ttk.Style(self.root)
@@ -323,6 +351,8 @@ class PreviewUI:
             fill="x", pady=(2, 0))
 
     def select_tab(self, name):
+        if name == "History" and hasattr(self, "history_panel"):
+            self.history_panel.refresh()
         old_page = self.pages.get(self.current_tab)
         focused = self.root.focus_get()
         focus_was_hidden = old_page is not None and old_page != self.pages[name] and (
@@ -420,9 +450,20 @@ class PreviewUI:
 
     def close_preview(self):
         if self.pipeline.allow_close() and self.editor_panel.confirm_close():
-            self.pipeline.dispose()
-            self.editor_panel.cancel_refresh()
-            self.root.destroy()
+            if self.editor_panel.finish_close():
+                self.dispose()
+                self.root.destroy()
+
+    def dispose(self):
+        if self._disposed:
+            return
+        self._disposed = True
+        self.pipeline.dispose()
+        self.editor_panel.cancel_refresh()
+        self.editor_panel.dispose_recovery()
+        self.history_panel.dispose()
+        if self.history_store is not None:
+            self.history_store.close()
 
     def _transcribe(self, page):
         page.columnconfigure(0, weight=1)
@@ -699,19 +740,7 @@ class PreviewUI:
             self.note(body, text).pack(fill="x")
 
     def _history(self, page):
-        shell, body = self.card(page)
-        shell.pack(fill="both", expand=True)
-        self.label(body, "Recent transcriptions", size=18, bold=True).pack(anchor="w")
-        middle = self.tk.Frame(body, bg=C["card"])
-        middle.pack(fill="both", expand=True, padx=20, pady=20)
-        middle.columnconfigure(0, weight=1)
-        middle.rowconfigure((0, 2), weight=1)
-        empty = self.tk.Frame(middle, bg=C["card"])
-        empty.grid(row=1, column=0, sticky="ew")
-        self._icon(empty, "history", size=48).pack(pady=(0, 18))
-        self.label(empty, "Your work will appear here", size=16, bold=True, anchor="center").pack(fill="x")
-        self.note(empty, "History isn't saved yet. Save finished transcripts from the Editor before closing.",
-                  centered=True).pack(fill="x", pady=(10, 0))
+        self.history_panel = HistoryPanel(self, page)
 
     def _about(self, page):
         shell, body = self.card(page)
@@ -743,10 +772,16 @@ def launch_preview(*, windows_preview: bool = False) -> None:
     root = tk.Tk()
     title = "Vidrick Mac - Windows Development Preview" if windows_preview else "Vidrick Mac Preview"
     root.title(f"{title} - {__version__}")
+    ui = None
     try:
-        PreviewUI(root, windows_preview=windows_preview, tk=tk, ttk=ttk, filedialog=filedialog)
+        library = Path(__file__).resolve().parents[1] / "local-history" / (
+            "windows-preview" if windows_preview else "mac")
+        ui = PreviewUI(root, windows_preview=windows_preview, tk=tk, ttk=ttk, filedialog=filedialog,
+                       history_root=library)
         root.mainloop()
     finally:
+        if ui is not None:
+            ui.dispose()
         try:
             root.destroy()
         except tk.TclError:

@@ -12,6 +12,7 @@ from unittest.mock import MagicMock, patch
 from vidrick_mac.preview import PreviewUI
 from vidrick_mac.transcription import Progress, TranscriptResult, TranscriptionError
 from vidrick_mac.transcription_job import JobEvent, JobManager
+from vidrick_mac.history_store import HistoryError
 
 
 class FakeManager:
@@ -356,7 +357,7 @@ class TranscriptionPanelTkTests(unittest.TestCase):
                 self.manager.emit("completed", result)
                 self.poll()
                 return True
-            self.assertEqual(title, "Unsaved finished transcript")
+            self.assertEqual(title, "Saved finished transcript")
             return False
 
         self.messages.askyesno.side_effect = confirm
@@ -386,6 +387,92 @@ class TranscriptionPanelTkTests(unittest.TestCase):
         self.assertFalse(self.panel.close_after_cancel)
         self.assertIsNone(self.panel.pending)
         self.assertEqual(self.manager.cancel_calls, 0)
+
+    def test_result_is_saved_once_before_editor_handoff_with_frozen_metadata(self):
+        self.assertTrue(self.panel.start())
+        self.panel.model.set("changed-after-start.bin")
+        self.editor.busy = True
+        result = self.finish("Durable result 🌍")
+        entries = self.ui.history_store.list_entries()
+        self.assertEqual(len(entries), 1)
+        entry = self.ui.history_store.get_entry(entries[0].id)
+        self.assertEqual(entry.text, result.text)
+        self.assertEqual(entry.model, "synthetic-model.bin")
+        self.assertEqual(entry.language, "en")
+        self.assertTrue(self.panel.retry_history() is False)  # Editor is busy.
+        self.editor.busy = False
+        self.assertTrue(self.panel.retry_history())
+        self.assertTrue(self.panel.open_result())
+        self.assertEqual(len(self.ui.history_store.list_entries()), 1)
+
+    def test_history_failure_retains_result_and_retry_persists_before_handoff(self):
+        self.assertTrue(self.panel.start())
+        with patch.object(self.ui.history_store, "add_result", side_effect=HistoryError("Synthetic disk full")):
+            result = self.finish("Retain on failure")
+        self.assertIs(self.panel.pending, result)
+        self.assertEqual(self.editor.content(), "")
+        self.assertIn("History save failed", self.panel.status.get())
+        self.assertTrue(self.panel.retry_history_button.winfo_manager())
+        self.assertTrue(self.panel.details_button.winfo_manager())
+        self.assertFalse(self.panel.start())
+        self.assertTrue(self.panel.retry_history())
+        self.assertIs(self.panel.pending, result)
+        self.assertTrue(self.panel.open_result())
+        self.assertEqual(self.editor.content(), result.text)
+        self.assertEqual(len(self.ui.history_store.list_entries()), 1)
+
+    def test_manual_save_fallback_keeps_failed_history_result_until_retry(self):
+        self.assertTrue(self.panel.start())
+        with patch.object(self.ui.history_store, "add_result", side_effect=HistoryError("Synthetic disk full")):
+            result = self.finish("Fallback text")
+        self.assertTrue(self.panel.open_result())
+        self.assertIs(self.panel.pending, result)
+        self.assertEqual(self.editor.content(), result.text)
+        self.assertTrue(self.panel.retry_history())
+        self.assertIsNone(self.panel.pending)
+        self.assertEqual(len(self.ui.history_store.list_entries()), 1)
+
+    def test_empty_cancelled_and_failed_jobs_do_not_create_history(self):
+        self.assertTrue(self.panel.start())
+        self.finish(" ")
+        self.assertTrue(self.panel.start())
+        self.manager.emit("cancelled")
+        self.poll()
+        self.assertTrue(self.panel.start())
+        self.manager.emit("failed", "Synthetic failure")
+        self.poll()
+        self.assertEqual(self.ui.history_store.list_entries(), [])
+
+    def test_dismissing_result_keeps_saved_history_and_original_recording(self):
+        recording = Path(self.recordings[1])
+        recording.write_text("Synthetic recording marker", encoding="utf-8")
+        self.editor.text.insert("1.0", "Keep current work")
+        self.assertTrue(self.panel.start())
+        self.finish()
+        self.messages.askyesno.return_value = True
+        self.panel.discard_result()
+        self.assertIsNone(self.panel.pending)
+        self.assertEqual(len(self.ui.history_store.list_entries()), 1)
+        self.assertEqual(recording.read_text(encoding="utf-8"), "Synthetic recording marker")
+
+    def test_deleting_waiting_result_history_copy_updates_close_and_retry_state(self):
+        self.editor.text.insert("1.0", "Keep current work")
+        self.assertTrue(self.panel.start())
+        result = self.finish()
+        self.assertIs(self.panel.pending, result)
+        saved_id = self.panel.pending_history_id
+        self.ui.select_tab("History")
+        self.ui.history_panel.tree.selection_set(saved_id)
+        self.messages.askyesno.return_value = True
+        self.assertTrue(self.ui.history_panel.delete_selected())
+        self.assertIsNone(self.panel.pending_history_id)
+        self.assertIn("History copy deleted", self.panel.status.get())
+        self.assertEqual(self.ui.history_store.list_entries(), [])
+        self.messages.askyesno.return_value = False
+        self.assertFalse(self.panel.allow_close())
+        self.assertEqual(self.messages.askyesno.call_args.args[0], "Unsaved finished transcript")
+        self.assertTrue(self.panel.retry_history())
+        self.assertEqual(len(self.ui.history_store.list_entries()), 1)
 
     def test_cleanup_failure_after_close_cancellation_keeps_error_visible(self):
         self.assertTrue(self.panel.start())

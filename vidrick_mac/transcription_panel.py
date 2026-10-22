@@ -4,6 +4,7 @@ from .preview_model import COLORS as C, display_filename
 from .transcription import JobSpec, TranscriptionError
 from .transcription_job import JobManager
 from .setup_panel import SetupPanel
+from .history_store import HistoryError
 
 
 LANGUAGES = {"Auto-detect": "auto", "English": "en", "Spanish": "es", "French": "fr",
@@ -16,6 +17,9 @@ class TranscriptionPanel:
         self.manager = manager if manager is not None else JobManager()
         self.running = False
         self.pending = None
+        self.pending_history_id = None
+        self.pending_opened = False
+        self.active_model = ""
         self.poll_id = None
         self.close_after_cancel = False
         self.job_id = None
@@ -53,7 +57,7 @@ class TranscriptionPanel:
                                        style="Preview.TCheckbutton")
         control.grid(row=row, column=0, sticky="w", pady=(0, 8))
         self.controls.append((control, "normal"))
-        self.ui.note(form, "Save the finished text from the Editor. Speaker labels and insights are planned.",
+        self.ui.note(form, "Finished results are kept in History. Save an edited copy from the Editor.",
                      size=9).grid(row=row+1, column=0, sticky="ew", pady=(0, 8))
         row += 2
         self.setup.build_summary(form, row)
@@ -81,8 +85,10 @@ class TranscriptionPanel:
         self.cancel_button = self.ui.button(buttons, "Cancel", self.cancel)
         self.open_button = self.ui.button(buttons, "Open in Editor", self.open_result, primary=True)
         self.discard_button = self.ui.button(buttons, "Discard result", self.discard_result)
+        self.retry_history_button = self.ui.button(buttons, "Retry History save", self.retry_history)
         self.details_button = self.ui.button(buttons, "Details…", self.show_error)
-        for button in (self.cancel_button, self.open_button, self.discard_button, self.details_button):
+        for button in (self.cancel_button, self.open_button, self.discard_button,
+                       self.retry_history_button, self.details_button):
             button.pack(fill="x", pady=2)
             button.pack_forget()
         self.update_controls()
@@ -128,7 +134,8 @@ class TranscriptionPanel:
         self.setup.refresh_controls()
         if not hasattr(self, "cancel_button"):
             return
-        for button in (self.cancel_button, self.open_button, self.discard_button, self.details_button):
+        for button in (self.cancel_button, self.open_button, self.discard_button,
+                       self.retry_history_button, self.details_button):
             button.pack_forget()
         if self.running:
             self.cancel_button.configure(text="Cancelling…" if self.manager.cancelling else "Cancel",
@@ -136,6 +143,10 @@ class TranscriptionPanel:
             self.cancel_button.pack(fill="x", pady=2)
         elif self.pending is not None:
             self.open_button.pack(fill="x", pady=2)
+            if self.error and self.pending_history_id is None:
+                self.retry_history_button.pack(fill="x", pady=2)
+                self.details_button.pack(fill="x", pady=2)
+            self.discard_button.configure(text="Dismiss result" if self.pending_history_id else "Discard result")
             self.discard_button.pack(fill="x", pady=2)
         elif self.error:
             self.details_button.pack(fill="x", pady=2)
@@ -161,6 +172,9 @@ class TranscriptionPanel:
             self.update_controls()
             return False
         self.running = True
+        self.active_model = display_filename(spec.model, windows_preview=self.ui.windows_preview)
+        self.pending_history_id = None
+        self.pending_opened = False
         self.error = ""
         self.job_id = None
         name = display_filename(path, windows_preview=self.ui.windows_preview)
@@ -211,8 +225,11 @@ class TranscriptionPanel:
                     self._set_progress(100)
                     if result.text.strip():
                         self.pending = result
+                        self.pending_opened = False
+                        self.pending_history_id = None
                         self.status.set("Transcript ready")
                         self.detail.set(f"{self.active_filename} · Open in the Editor to review and save.")
+                        self._save_pending_history()
                         self.ui.tab_buttons["Transcribe"].configure(text="Transcribe •")
                     else:
                         self.status.set("Finished · no speech found")
@@ -232,8 +249,51 @@ class TranscriptionPanel:
         elif self.close_after_cancel:
             self.close_after_cancel = False
             self.ui.close_preview()
-        elif completed and self.pending is not None and not self.blocked:
+        elif completed and self.pending is not None and not self.blocked and self.pending_history_id:
             self.open_result()
+
+    def _save_pending_history(self):
+        """Persist the result before handing off, retaining it on any failure."""
+        if self.pending is None:
+            return False
+        if self.pending_history_id:
+            return True
+        try:
+            store = self.ui.history_store
+            if store is None:
+                raise HistoryError(self.ui.history_error or "Local History is unavailable.")
+            entry = store.add_result(self.pending.text, self.pending.suggested_name,
+                                     model=self.active_model, language=self.pending.language or "")
+            self.pending_history_id = entry.id
+        except HistoryError as exc:
+            self.error = str(exc)
+            self.status.set("Transcript ready · History save failed")
+            self.detail.set("The result is still here. Retry History save, or open the Editor and save a copy.")
+            return False
+        self.error = ""
+        self.status.set("Transcript saved in History")
+        self.detail.set(f"{self.active_filename} · Open in the Editor to review and save an edited copy.")
+        self.ui.history_panel.refresh()
+        return True
+
+    def retry_history(self):
+        if self.running or self.pending is None or self.blocked:
+            return False
+        self.ui.ensure_history_store()
+        saved = self._save_pending_history()
+        if saved and self.pending_opened:
+            self.pending = None
+            self.ui.tab_buttons["Transcribe"].configure(text="Transcribe")
+        self.update_controls()
+        return saved
+
+    def history_entry_deleted(self, identifier):
+        if self.pending is not None and self.pending_history_id == identifier:
+            self.pending_history_id = None
+            self.error = "The saved History copy was deleted. The waiting result is still available here."
+            self.status.set("Transcript ready · History copy deleted")
+            self.detail.set("Retry History save to keep it again, or open the Editor and save a copy.")
+            self.update_controls()
 
     def cancel(self):
         if self.running and self.manager.cancel():
@@ -249,10 +309,14 @@ class TranscriptionPanel:
         if not self.ui.editor_panel.load_transcription(result.text, result.suggested_name):
             self.detail.set("Your finished result is waiting here while you keep the current Editor document.")
             return False
-        self.pending = None
-        self.ui.tab_buttons["Transcribe"].configure(text="Transcribe")
-        self.status.set("Finished · opened in Editor")
-        self.detail.set(f"{self.active_filename} · Save the transcript when you're ready.")
+        self.pending_opened = True
+        if self.pending_history_id:
+            self.pending = None
+            self.ui.tab_buttons["Transcribe"].configure(text="Transcribe")
+            self.status.set("Finished · saved in History")
+            self.detail.set(f"{self.active_filename} · Opened in Editor. Save any edited copy when ready.")
+        else:
+            self.detail.set("Opened in Editor. Save a copy there, or retry History save here.")
         self.update_controls()
         return True
 
@@ -267,11 +331,13 @@ class TranscriptionPanel:
     def discard_result(self):
         if self.pending is None or self.blocked:
             return
-        if self._ask("Discard finished transcript?", "This result has not been saved.",
-                     "Discard it and allow another transcription? The current Editor document will stay open."):
+        saved = bool(self.pending_history_id)
+        if self._ask("Dismiss finished transcript?" if saved else "Discard finished transcript?",
+                     "This result is saved in History." if saved else "This result has not been saved to History.",
+                     "Allow another transcription? The current Editor document will stay open."):
             self.pending = None
             self.ui.tab_buttons["Transcribe"].configure(text="Transcribe")
-            self.status.set("Finished result discarded")
+            self.status.set("Finished result dismissed" if saved else "Finished result discarded")
             self.detail.set("Select a recording to start another transcription.")
             self._set_progress(0)
             self.update_controls()
@@ -305,7 +371,10 @@ class TranscriptionPanel:
                 # loop. Leave its Details available instead of hiding it.
                 return False
         if self.pending is not None:
-            return self._ask("Unsaved finished transcript", "Discard the waiting result and close?",
+            saved = bool(self.pending_history_id)
+            return self._ask("Saved finished transcript" if saved else "Unsaved finished transcript",
+                             "Close with this result saved in History?" if saved else "Discard the waiting result and close?",
+                             "Reopen the result from History next time." if saved else
                              "Choose No, then Open in Editor to review and save the finished transcript.")
         return True
 

@@ -162,7 +162,8 @@ class WindowsCommandTests(unittest.TestCase):
             preview.launch_preview(windows_preview=True)
         build_ui.assert_called_once_with(
             fake_tk.Tk.return_value, windows_preview=True, tk=fake_tk,
-            ttk=fake_tk.ttk, filedialog=fake_tk.filedialog)
+            ttk=fake_tk.ttk, filedialog=fake_tk.filedialog,
+            history_root=Path(preview.__file__).resolve().parents[1] / "local-history" / "windows-preview")
         fake_tk.Tk.return_value.mainloop.assert_called_once_with()
         fake_tk.Tk.return_value.destroy.assert_called_once_with()
 

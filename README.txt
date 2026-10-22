@@ -14,7 +14,7 @@ WHAT WORKS AT THIS STAGE
   content surfaces, blue accents, and a separate transcription settings pane.
 - Soft rounded cards, sidebar selection pills, subtle highlights/shadows,
   and rounded buttons in the Windows development preview.
-- Five working sections: Transcribe, Editor, Insights, History, About & Updates.
+- Five sections: Transcribe, Editor, History, and placeholder Insights and About & Updates.
 - Platform system font; native Aqua controls are preferred on macOS. The
   Windows preview uses a separately styled Tk theme. Native rendering still
   needs Mac testing; this is not SwiftUI or a Liquid Glass implementation.
@@ -29,7 +29,11 @@ WHAT WORKS AT THIS STAGE
 - In-app engine/model setup: choose a model, download verified components,
   build local tools, and retain setup across launches. Cancellation and retry
   preserve the previous configuration. Native installation is not yet verified.
-- Clearly labeled Insights, History, and About & Updates placeholder panels.
+- Local searchable History with recording names, dates, models, reopen, rename,
+  and delete. Completed transcripts are saved before opening in the Editor.
+- Automatic local recovery drafts for Editor changes, with restore/discard
+  choices after an unexpected close. Manually saved files remain separate.
+- Clearly labeled Insights and About & Updates placeholder panels.
 - A separately labeled Windows development preview of that same small UI.
 - A separate future Mac-preview data path. It is calculated, not created.
 - Standard-library unit tests; no pip install or AI dependencies required.
@@ -40,7 +44,9 @@ the one selected recording and may create a temporary converted audio file.
 The app does not upload recordings. Downloads begin only after clicking Set Up
 on a Mac. The Windows UI preview never downloads or installs setup components,
 starts transcription, saves setup preferences, or reads selected recordings.
-The Editor reads and writes only the .txt files you explicitly open or save.
+The Editor reads and writes the .txt files you explicitly open or save. History
+also keeps finished transcript text locally, and autosave keeps recovery drafts
+in the project's private local library. It never copies source recordings.
 There are no bundled models, production account connections, license
 requests, analytics, or updates. No Windows source,
 settings, credentials, release files, or dependencies were copied here.
@@ -106,7 +112,8 @@ with LF line endings. Invalid/binary text is rejected with an error message.
 Saves use a temporary file beside the destination and replace it only after
 writing succeeds. Changes made to the current file by another app trigger
 an overwrite decision. For a symbolic-link transcript, use Save As to a new
-regular .txt file. There is no autosave or crash recovery yet.
+regular .txt file. Local recovery drafts protect edits between explicit saves;
+see HISTORY AND DRAFT RECOVERY below for the recovery window and limits.
 
 The toolbar's Transparency checkbox adds a subtle effect at 97% window
 opacity. Uncheck it for a fully opaque window. This choice is temporary;
@@ -119,7 +126,8 @@ Formatted exports, recording output-folder selection, account management,
 and updates remain unavailable. Drag and drop is not implemented.
 Recording selections, language/task choices, and window preferences are temporary.
 On a Mac, successful setup paths are saved locally for the next launch. Text
-persists only when explicitly saved from the Editor.
+can be exported with Save/Save As. Completed results and recovery drafts also
+persist in the local library described below.
 This is not a Mac emulator or a full port of the Windows app. Appearance,
 installation, Apple-chip performance, and Mac compatibility still need a Mac.
 It never uses the installed Windows Vidrick app or its project, data, models,
@@ -245,11 +253,15 @@ validation and cleanup. Cancel stops the local process and clears temporary
 files before another job can start. Closing during a run offers cancellation
 and waits without freezing the UI. Errors remain available under Details.
 
-A finished transcript opens in the Editor with the recording's name and is
-not saved automatically. Timestamped output uses [HH:MM:SS.mmm --> ...]. If
+A finished transcript is saved in local History, then opens in the Editor
+as an editable copy with the recording's name. Use Save to write a .txt file.
+Timestamped output uses [HH:MM:SS.mmm --> ...]. If
 existing edits cannot be replaced, or a file dialog is already open, the result
 waits under Transcribe (marked with a dot). Open in Editor retries the handoff.
-Open or explicitly discard that result before starting another job. Closing
+Open or explicitly dismiss that result before starting another job. Dismissing
+a result saved in History does not delete the History entry. If History cannot
+save, the result remains waiting with Retry History save and Details; Open in
+Editor lets you save a .txt copy. Closing
 checks both the pending result and Editor edits. An empty engine result is
 shown as 'no speech found' without replacing the Editor document.
 
@@ -257,8 +269,9 @@ Temporary audio, JSON, and bounded diagnostic logs stay under the project's
 ignored runtime-output/job-* directory and are removed when the job ends.
 If a process cannot be confirmed stopped, its job files are kept and Details
 explains where they are. Cleanup failures keep the window open with an error.
-An OS/app crash may also leave temporary files; there is no crash recovery.
-There is no automatic history, batch processing, playback, speaker separation,
+An OS/app crash may also leave temporary files; draft recovery does not resume
+interrupted transcription or clean up interrupted engine jobs.
+There is no batch processing, playback, speaker separation,
 or Word/SRT/VTT export yet. Never commit recordings, models, or local preferences.
 
 IN-APP ENGINE AND MODEL SETUP
@@ -310,6 +323,50 @@ Opening Set Up again lets you switch models; verified tools and downloads are
 reused. Manual files are left where you selected them. Moving or removing those
 files requires choosing new paths. Windows mode can preview this screen but
 all setup installation, persistence, and execution actions remain disabled.
+
+HISTORY AND DRAFT RECOVERY
+On native Mac, every nonempty completed result is stored locally before the
+Editor handoff. History shows newest results first, with their title, date and
+model. Search filters titles/model names; Open loads an editable copy, Rename
+changes its library title, and Delete removes only that selected saved result.
+Original recordings, exported .txt files, and current Editor edits are not
+changed by deleting History. Editing a reopened result does not replace its
+original History text; use Save/Save As to keep an edited .txt copy.
+
+The Editor saves a separate recovery draft after a short pause in editing,
+and periodically during continued typing. Its recovery status shows whether
+the current text has been kept locally. A sudden crash may lose the last few
+seconds of typing; this is not an undo-history backup or a recording backup.
+After restart, History offers Restore and Discard for saved recovery drafts.
+Restore opens an untitled editable copy and requires Save/Save As for export,
+so it cannot overwrite a file that changed while the app was closed.
+
+Successful Save clears that document's recovery draft. Cancelled or failed
+saves/open operations keep it. A normal close still asks about unsaved edits;
+choosing Discard intentionally removes that session's recovery draft after all
+close checks pass. Other recovery drafts remain available until restored or
+explicitly discarded. Storage failures remain visible and preserve the last
+successful snapshot; save a .txt copy if recovery storage is unavailable.
+
+The prototype keeps its private SQLite library under the project:
+  local-history/mac/             native Mac results and recovery drafts
+  local-history/windows-preview/ isolated Windows UI development drafts
+These directories are Git-ignored. They contain transcript text and minimal
+metadata, not recordings, account data or model files. They are local files,
+not encrypted storage or a cloud backup. Moving/deleting the project can make
+this library unavailable; keep important work with Save/Save As outside it.
+The development library holds up to 2,000 results and 100 recovery drafts;
+reaching a limit asks you to remove older entries without pruning anything.
+Restoring an existing draft still works when the draft limit is reached.
+Only one app instance may use each library at a time. If another instance has
+it open, close that instance and use History's Refresh to retry. Storage is
+transactional; existing results are not silently removed to free space.
+
+The Windows UI preview can exercise local History and Editor recovery using
+its own separate library. It still cannot run transcription or install models.
+Automated tests use in-memory or temporary synthetic libraries, never either
+real preview library. Native Mac filesystem and crash behavior require Mac
+validation; Windows tests do not establish those guarantees.
 
 SEPARATION FROM WINDOWS
 Windows reference: C:\Vidrick_AI_Transcriber_4.3 - Main

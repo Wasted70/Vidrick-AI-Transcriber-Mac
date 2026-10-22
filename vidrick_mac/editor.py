@@ -1,11 +1,16 @@
 """Local plain-text transcript editor; no recording or network access."""
 
+from uuid import uuid4
+
+from .history_store import HistoryError
 from .preview_model import COLORS as C
 from .transcript_io import TranscriptConflict, TranscriptError, read_transcript, write_transcript
 
 
 class TranscriptEditor:
     MATCH_LIMIT = 2000
+    AUTOSAVE_DELAY_MS = 750
+    AUTOSAVE_LIMIT_MS = 3000
 
     def __init__(self, ui, parent):
         self.ui, self.root, self.tk, self.ttk = ui, ui.root, ui.tk, ui.ttk
@@ -18,6 +23,15 @@ class TranscriptEditor:
         self.matches = []
         self.active_match = None
         self.matches_limited = False
+        self._draft_id = uuid4().hex
+        self._draft_written = False
+        self._last_recovery_text = None
+        self._recovery_after = None
+        self._recovery_deadline = None
+        self._recovery_disposed = False
+        self.recovery_status = self.tk.StringVar(value=(
+            "Recovery ready" if getattr(ui, "history_store", None) is not None
+            else "Recovery unavailable · Save a copy"))
         self.document_label = self.tk.StringVar(value="Untitled.txt · Not saved")
         self.count_label = self.tk.StringVar(value="0 words · 0 characters")
         self.find_text = self.tk.StringVar(value="")
@@ -65,6 +79,7 @@ class TranscriptEditor:
         self.text.tag_configure("find_match", background="#fff0bb", foreground=C["text"])
         self.text.tag_configure("find_current", background=C["selected"], foreground=C["text"])
         self.text.bind("<<Modified>>", self._modified)
+        self.text.bind("<Destroy>", lambda event: self.dispose_recovery(), add="+")
         for key in ("z", "Z"):
             self.text.bind(f"<{ui.primary_key}-{key}>", self.undo)
             self.text.bind(f"<{ui.primary_key}-Shift-{key}>", self.redo)
@@ -74,6 +89,8 @@ class TranscriptEditor:
         self.text.edit_modified(False)
         ui.label(body, textvariable=self.count_label, size=9, muted=True).grid(
             row=5, column=0, sticky="w", pady=(10, 0))
+        ui.label(body, textvariable=self.recovery_status, size=9, muted=True).grid(
+            row=6, column=0, sticky="w", pady=(2, 0))
         self.find_text.trace_add("write", self._query_changed)
         self.match_case.trace_add("write", self._query_changed)
 
@@ -127,6 +144,127 @@ class TranscriptEditor:
         if self.text.edit_modified():
             self.text.edit_modified(False)
             self._schedule_refresh()
+            self._schedule_recovery()
+
+    @property
+    def current_draft_id(self):
+        return getattr(self, "_draft_id", None)
+
+    def _recovery_message(self, message):
+        if hasattr(self, "recovery_status"):
+            self.recovery_status.set(message)
+
+    def _notify_history(self):
+        panel = getattr(self.ui, "history_panel", None)
+        if panel is not None:
+            panel.refresh()
+
+    def _draft_title(self):
+        name = self.document.path.name if self.document else self.suggested_name or "Untitled.txt"
+        # Keep only a display name, never the external transcript's source path.
+        name = str(name).replace("\\", "/").rsplit("/", 1)[-1]
+        name = "".join(character if ord(character) >= 32 and ord(character) != 127 else " "
+                       for character in name).strip()
+        return name[:240] if name and name not in {".", ".."} else "Untitled.txt"
+
+    def _cancel_recovery_timers(self):
+        for attribute in ("_recovery_after", "_recovery_deadline"):
+            timer = getattr(self, attribute, None)
+            if timer is not None:
+                self.root.after_cancel(timer)
+                setattr(self, attribute, None)
+
+    def _schedule_recovery(self):
+        if not self.current_draft_id or getattr(self, "_recovery_disposed", False):
+            return
+        if getattr(self.ui, "history_store", None) is None:
+            self._recovery_message("Recovery unavailable · Save a copy")
+            return
+        if self._recovery_after is not None:
+            self.root.after_cancel(self._recovery_after)
+        self._recovery_after = self.root.after(self.AUTOSAVE_DELAY_MS, self.flush_recovery)
+        if self._recovery_deadline is None:
+            self._recovery_deadline = self.root.after(self.AUTOSAVE_LIMIT_MS, self.flush_recovery)
+        self._recovery_message("Saving locally…")
+
+    def flush_recovery(self):
+        """Snapshot current edits without touching an opened external document.
+
+        Updating an existing snapshot after Undo also prevents stale edits being
+        offered after a crash. An untouched clean document needs no snapshot.
+        """
+        if not self.current_draft_id or getattr(self, "_recovery_disposed", False):
+            return True
+        self._cancel_recovery_timers()
+        text = self.content()
+        if text == self.saved_text and not self._draft_written:
+            self._recovery_message("Recovery ready" if getattr(self.ui, "history_store", None)
+                                   is not None else "Recovery unavailable · Save a copy")
+            return True
+        store = getattr(self.ui, "history_store", None)
+        if store is None:
+            self._recovery_message("Recovery unavailable · Save a copy")
+            return False
+        if text == self._last_recovery_text and self._draft_written:
+            self._recovery_message("Saved locally")
+            return True
+        try:
+            store.save_draft(self._draft_id, text, self._draft_title())
+        except HistoryError:
+            self._recovery_message("Recovery unavailable · Save a copy")
+            return False
+        self._draft_written = True
+        self._last_recovery_text = text
+        self._recovery_message("Saved locally")
+        self._notify_history()
+        return True
+
+    def _clear_recovery(self):
+        self._cancel_recovery_timers()
+        if not getattr(self, "_draft_written", False):
+            return True
+        store = getattr(self.ui, "history_store", None)
+        if store is None:
+            self._recovery_message("Recovery cleanup unavailable")
+            return False
+        try:
+            store.delete_draft(self._draft_id)
+        except HistoryError:
+            self._recovery_message("Recovery cleanup unavailable")
+            return False
+        self._draft_written = False
+        self._last_recovery_text = None
+        self._recovery_message("Recovery ready")
+        self._notify_history()
+        return True
+
+    def _replacement_recovery(self):
+        """Retire the old document only after its replacement is in the Editor."""
+        if not self.current_draft_id:
+            return
+        cleared = self._clear_recovery()
+        self._draft_id = uuid4().hex
+        self._draft_written = False
+        self._last_recovery_text = None
+        self.flush_recovery()
+        if not cleared:
+            self._recovery_message("Previous recovery copy kept in History")
+
+    def finish_close(self):
+        """Called only after every app-close guard has accepted closing."""
+        if not self._clear_recovery():
+            self._messages().showerror(
+                "Could not finish closing",
+                "The local recovery copy could not be removed. Your text is still open. "
+                "Check that the local History folder is writable and try again.", parent=self.root)
+            return False
+        self.dispose_recovery()
+        return True
+
+    def dispose_recovery(self):
+        """Cancel callbacks without discarding recovery data."""
+        self._cancel_recovery_timers()
+        self._recovery_disposed = True
 
     def _schedule_refresh(self):
         self.cancel_refresh()
@@ -155,6 +293,7 @@ class TranscriptEditor:
             self._refresh_matches()
 
     def _confirm_changes(self, action):
+        self.flush_recovery()
         if not self.dirty:
             return True
         name = self.document.path.name if self.document else self.suggested_name or "Untitled.txt"
@@ -180,6 +319,7 @@ class TranscriptEditor:
             return False
         self.busy = True
         try:
+            self.flush_recovery()
             path = self.ui.filedialog.askopenfilename(
                 parent=self.root, title="Open transcript", filetypes=[("Text transcripts", "*.txt")])
             if not path or not self._confirm_changes("opening another transcript"):
@@ -202,6 +342,7 @@ class TranscriptEditor:
             self.ui.select_tab("Editor")
             self.text.focus_set()
             self.refresh()
+            self._replacement_recovery()
             return True
         finally:
             self.busy = False
@@ -218,30 +359,101 @@ class TranscriptEditor:
         try:
             if not self._confirm_changes("opening the finished transcript"):
                 return False
-            self.cancel_refresh()
-            self.search_visible = False
-            self.find_panel.grid_remove()
-            self.find_text.set("")
-            self.replace_text.set("")
-            self.match_case.set(False)
-            self.matches = []
-            self.active_match = None
-            self.matches_limited = False
-            self.match_label.set("Enter text to find")
-            self.text.tag_remove("find_match", "1.0", "end")
-            self.text.tag_remove("find_current", "1.0", "end")
-            self.text.delete("1.0", "end")
-            self.text.insert("1.0", text.replace("\r\n", "\n").replace("\r", "\n"))
-            self.text.edit_reset()
-            self.text.edit_modified(False)
-            self.document = None
-            self.saved_text = ""
-            self.suggested_name = suggested_name or "Transcript.txt"
-            self.text.mark_set("insert", "1.0")
-            self.text.yview_moveto(0)
-            self.ui.select_tab("Editor")
-            self.text.focus_set()
-            self.refresh()
+            self._show_unsaved(text, suggested_name)
+            self._replacement_recovery()
+            return True
+        finally:
+            self.busy = False
+
+    def _show_unsaved(self, text, suggested_name):
+        self.cancel_refresh()
+        self.search_visible = False
+        self.find_panel.grid_remove()
+        self.find_text.set("")
+        self.replace_text.set("")
+        self.match_case.set(False)
+        self.matches = []
+        self.active_match = None
+        self.matches_limited = False
+        self.match_label.set("Enter text to find")
+        self.text.tag_remove("find_match", "1.0", "end")
+        self.text.tag_remove("find_current", "1.0", "end")
+        self.text.delete("1.0", "end")
+        self.text.insert("1.0", text.replace("\r\n", "\n").replace("\r", "\n"))
+        self.text.edit_reset()
+        self.text.edit_modified(False)
+        self.document = None
+        self.saved_text = ""
+        self.suggested_name = suggested_name or "Transcript.txt"
+        self.text.mark_set("insert", "1.0")
+        self.text.yview_moveto(0)
+        self.ui.select_tab("Editor")
+        self.text.focus_set()
+        self.refresh()
+
+    def recover_draft(self, draft):
+        """Restore an unnamed copy, transferring recovery only after a safe save."""
+        if self.blocked:
+            return False
+        self.busy = True
+        try:
+            if not self._confirm_changes("restoring the recovery copy"):
+                return False
+            store = getattr(self.ui, "history_store", None)
+            if store is None:
+                self._messages().showerror("Recovery unavailable",
+                    "The recovery copy is still in History. Restore it after local storage is available.",
+                    parent=self.root)
+                return False
+            title = str(draft.title).replace("\\", "/").rsplit("/", 1)[-1] or "Recovered transcript"
+            if not title.lower().endswith(".txt"):
+                title = title[:236] + ".txt"
+            text = draft.text.replace("\r\n", "\n").replace("\r", "\n")
+            try:
+                # Adopt the selected snapshot instead of consuming a new slot.
+                # Its normalized text remains durable before display, including
+                # when the recovery list is already at its capacity limit.
+                store.save_draft(draft.id, text, title)
+            except HistoryError as exc:
+                self._recovery_message("Recovery unavailable · Save a copy")
+                self._messages().showerror("Could not restore recovery", str(exc), parent=self.root)
+                return False
+            previous = (self.content(), self.document, self.saved_text, self.suggested_name)
+            try:
+                self._show_unsaved(text, title)
+                if not text:
+                    # Deleting all text can itself be the edit being recovered.
+                    # Keep that empty copy unsaved until Save As or discard.
+                    self.saved_text = None
+                    self.refresh()
+            except self.tk.TclError as exc:
+                # The durable original copies remain available even if Tk
+                # cannot display the new document (for example during shutdown).
+                try:
+                    self.text.delete("1.0", "end")
+                    self.text.insert("1.0", previous[0])
+                    self.document, self.saved_text, self.suggested_name = previous[1:]
+                    self.refresh()
+                except self.tk.TclError:
+                    pass
+                self._messages().showerror("Could not restore recovery", str(exc), parent=self.root)
+                return False
+            retired = set()
+            if self._draft_written and self._draft_id != draft.id:
+                retired.add(self._draft_id)
+            self._cancel_recovery_timers()
+            self._draft_id = draft.id
+            self._draft_written = True
+            self._last_recovery_text = text
+            cleared = True
+            for draft_id in retired:
+                try:
+                    store.delete_draft(draft_id)
+                except HistoryError:
+                    cleared = False
+            self._recovery_message("Saved locally" if cleared else
+                                   "Previous recovery copy kept in History")
+            self._notify_history()
             return True
         finally:
             self.busy = False
@@ -259,6 +471,7 @@ class TranscriptEditor:
             self.busy = False
 
     def _save(self, *, save_as=False):
+        self.flush_recovery()
         path = self.document.path if self.document and not save_as else None
         if path is None:
             path = self.ui.filedialog.asksaveasfilename(
@@ -286,6 +499,7 @@ class TranscriptEditor:
         self.saved_text = text
         self.text.edit_separator()
         self.refresh()
+        self._clear_recovery()
         return True
 
     def undo(self, event=None):
@@ -303,6 +517,7 @@ class TranscriptEditor:
                 pass
             self.text.edit_separator()
             self.refresh()
+            self._schedule_recovery()
         return "break"
 
     def change_font_size(self, event=None):
@@ -446,3 +661,4 @@ class TranscriptEditor:
             self.text.edit_separator()
         self.active_match = None
         self.refresh()
+        self._schedule_recovery()

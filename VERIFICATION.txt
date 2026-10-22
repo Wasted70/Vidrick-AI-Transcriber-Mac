@@ -394,3 +394,62 @@ filesystem locking, Aqua/file dialogs, and native close/process-group behavior.
 The setup screen is implemented; this is not a tested native installer release.
 No hosted builds, packaging, signing, notarization, friend testing, licensing
 integration, production account access, website, or Windows product changes.
+
+HISTORY AND AUTOSAVE RECOVERY - OCTOBER 22, 2026
+
+Added local completed-result History and separate Editor recovery drafts.
+History supports title/model search, dates, reopen as an editable copy, rename,
+and confirmed delete. Startup opens History when previous recovery drafts are
+available. Restore checks current edits and adopts the durable selected draft;
+it works at the draft limit without requiring another saved copy to be deleted.
+
+Implementation:
+- Private transactional SQLite library, bounded text and metadata, basename-only
+  recording/model labels, metadata-only list reads, and no recording copies.
+- Native project storage under ignored local-history/mac; the explicit Windows
+  UI preview uses isolated local-history/windows-preview. Tests inject synthetic
+  project-local stores or use memory. Nothing accesses Windows product data.
+- One library owner at a time through native filesystem locking. Startup lock
+  failures remain visible, and Refresh can reopen storage and immediately save
+  edits made while storage was unavailable. No silent History pruning.
+- Completed nonempty results persist before Editor handoff. A failed History
+  save keeps the result waiting with retry, details, and manual-save fallback.
+  Removing a waiting result's saved copy updates its unsaved/retry state.
+- Draft snapshots after 750 ms idle, capped at 3 seconds during continued edits.
+  Save/Save As still writes explicit .txt copies. Canceled or failed operations
+  preserve recovery; normal close removes the current draft only after every
+  close guard accepts. Recovered text cannot overwrite its former source file.
+- Recovery failure keeps the last successful snapshot and displays an error
+  status. Drafts do not resume interrupted transcription or restore undo history.
+
+Verification on Windows / Python 3.12.14:
+- Full VIDRICK_TEST_TK=1 suite: 322 tests run, 316 passed, 6 POSIX-only skipped.
+- 28 storage checks include Unicode/size bounds, transactional write failure,
+  restart persistence, real cross-process lock exclusion, and process-exit
+  rollback/recovery. Two storage checks for POSIX modes/symlinks were skipped.
+- 25 Editor recovery checks cover timing, canceled/failed open/save/close,
+  external source preservation, empty recovered text, capacity-limit restore,
+  safe snapshot adoption, cleanup failures, and real Tk autosave/restore.
+- 18 History Tk checks cover search, editable-copy integrity, rename/delete,
+  recovery decisions, modal guards, storage failures, and minimum-window layout.
+  Row visibility is checked, not only widget bounds: the compact window retains
+  at least two main result rows and one recovery row with usable scrollbars.
+- 5 desktop integration checks reopen a disk library across UI sessions, offer
+  recovery on startup, retain results, retry after a library lock, and preserve
+  older drafts through canceled close or approved discard of current edits.
+- 6 additional pipeline checks cover durable completion metadata, failed-save
+  retry, manual-save fallback, empty/canceled/failed jobs, dismissal, and deleting
+  the History copy of a still-waiting result.
+- All 32 package/test Python files parsed; git diff checks clean.
+- Opaque synthetic History and Editor windows visually inspected at 940x640.
+  Fixed recovery-area crowding found during visual review. Open in Editor and
+  its local-save status were checked through the actual Windows UI.
+- No real local-history or local-setup directory was created during validation.
+
+Limits:
+The skipped checks require POSIX permissions, symbolic links, FIFOs, or process
+groups. Native Mac locking, Aqua rendering, Command shortcuts, real setup and
+transcription, and native crash behavior remain unverified. Recovery can lose
+the last few seconds before its next successful write; it is local storage,
+not an encrypted/cloud backup. No installer, release, hosted build, friend test,
+licensing integration, or production Windows/account/website change was made.
