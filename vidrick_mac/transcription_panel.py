@@ -263,7 +263,8 @@ class TranscriptionPanel:
             if store is None:
                 raise HistoryError(self.ui.history_error or "Local History is unavailable.")
             entry = store.add_result(self.pending.text, self.pending.suggested_name,
-                                     model=self.active_model, language=self.pending.language or "")
+                                     model=self.active_model, language=self.pending.language or "",
+                                     timings=self.pending.timings)
             self.pending_history_id = entry.id
         except HistoryError as exc:
             self.error = str(exc)
@@ -306,7 +307,8 @@ class TranscriptionPanel:
         if self.running or self.pending is None or self.blocked:
             return False
         result = self.pending
-        if not self.ui.editor_panel.load_transcription(result.text, result.suggested_name):
+        if not self.ui.editor_panel.load_transcription(result.text, result.suggested_name,
+                                                       timings=result.timings):
             self.detail.set("Your finished result is waiting here while you keep the current Editor document.")
             return False
         self.pending_opened = True

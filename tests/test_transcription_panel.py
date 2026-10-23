@@ -113,8 +113,8 @@ class TranscriptionPanelTkTests(unittest.TestCase):
         self.panel._poll()
         self.root.update_idletasks()
 
-    def finish(self, text="Finished synthetic transcript", name="Second.txt"):
-        result = TranscriptResult(text, name, int(bool(text.strip())), "en")
+    def finish(self, text="Finished synthetic transcript", name="Second.txt", timings=()):
+        result = TranscriptResult(text, name, len(timings) or int(bool(text.strip())), "en", timings)
         self.manager.emit("completed", result)
         self.poll()
         return result
@@ -217,6 +217,33 @@ class TranscriptionPanelTkTests(unittest.TestCase):
         self.assertEqual(self.ui.current_tab, "Editor")
         self.assertEqual(float(self.panel.progress.cget("value")), 100)
         self.assertEqual(self.ui.tab_buttons["Transcribe"].cget("text"), "Transcribe")
+
+    def test_completion_preserves_timing_in_history_and_editor_handoff(self):
+        self.assertTrue(self.panel.start())
+        timings = ((25, 1050), (1600, 2300))
+        with patch.object(self.editor, "load_transcription", wraps=self.editor.load_transcription) as load:
+            result = self.finish("First cue\nSecond cue\n", timings=timings)
+        load.assert_called_once_with(result.text, result.suggested_name, timings=timings)
+        entries = self.ui.history_store.list_entries()
+        self.assertEqual(len(entries), 1)
+        saved = self.ui.history_store.get_entry(entries[0].id)
+        self.assertEqual(saved.text, result.text)
+        self.assertEqual(saved.timings, timings)
+        self.assertIsNone(self.panel.pending)
+
+    def test_history_retry_keeps_timing_after_storage_failure(self):
+        self.assertTrue(self.panel.start())
+        timings = ((200, 1400),)
+        with patch.object(self.ui.history_store, "add_result", side_effect=HistoryError("Synthetic disk full")):
+            result = self.finish("Timed cue\n", timings=timings)
+        self.assertIs(self.panel.pending, result)
+        self.assertEqual(self.panel.pending.timings, timings)
+        self.assertTrue(self.panel.retry_history())
+        entry = self.ui.history_store.get_entry(self.panel.pending_history_id)
+        self.assertEqual(entry.timings, timings)
+        with patch.object(self.editor, "load_transcription", wraps=self.editor.load_transcription) as load:
+            self.assertTrue(self.panel.open_result())
+        load.assert_called_once_with(result.text, result.suggested_name, timings=timings)
 
     def test_completed_result_waits_during_dialog_then_cancelled_handoff_keeps_it(self):
         self.editor.text.insert("1.0", "Current unsaved work")

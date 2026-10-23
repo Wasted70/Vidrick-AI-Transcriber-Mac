@@ -2,12 +2,13 @@
 
 Construction with no root is in-memory. The app explicitly selects its own
 project-local folder on launch. List methods return metadata (``text=''``);
-individual text is read only by get_entry/get_draft.
+individual text and segment timings are read only by get_entry/get_draft.
 """
 
 from contextlib import contextmanager
 from dataclasses import dataclass
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
+import json
 import os
 from pathlib import Path
 import re
@@ -22,6 +23,11 @@ PROJECT_ROOT = Path(__file__).resolve().parents[1]
 MAX_ENTRIES = 2000
 MAX_DRAFTS = 100
 MAX_TITLE = 240
+MAX_TIMINGS = 100_000
+MAX_TIMING_OFFSET = 999_999_999_999
+# Compact JSON: two twelve-digit offsets, brackets, separator, and comma per
+# pair, plus the outer brackets. No transcript text is duplicated in this data.
+MAX_TIMING_BYTES = MAX_TIMINGS * 28 + 1
 DATABASE_NAME = "history.sqlite3"
 _ID = re.compile(r"[0-9a-f]{32}\Z")
 
@@ -39,6 +45,11 @@ def _metadata_projection(fields) -> str:
 _ENTRY_METADATA = _metadata_projection((("id", 32), ("title", MAX_TITLE), ("suggested_name", MAX_TITLE),
                                        ("created_at", 40), ("model", MAX_TITLE), ("language", 80)))
 _DRAFT_METADATA = _metadata_projection((("id", 32), ("title", MAX_TITLE), ("updated_at", 40)))
+_TIMINGS_PROJECTION = (
+    "CASE WHEN typeof(timings)='text' "
+    f"AND length(CAST(timings AS BLOB))<={MAX_TIMING_BYTES} "
+    "THEN timings ELSE NULL END AS timings"
+)
 
 
 class HistoryError(Exception):
@@ -54,6 +65,7 @@ class Entry:
     created_at: str
     model: str
     language: str
+    timings: tuple[tuple[int, int], ...] = ()
 
 
 @dataclass(frozen=True)
@@ -62,6 +74,7 @@ class Draft:
     title: str
     text: str
     updated_at: str
+    timings: tuple[tuple[int, int], ...] = ()
 
 
 def _identifier(value: str) -> str:
@@ -107,6 +120,42 @@ def _text(value: str) -> str:
     return value
 
 
+def _timings(value) -> tuple[tuple[int, int], ...]:
+    """Preserve bounded offsets; subtitle-specific ordering belongs to export.
+
+    Zero-duration and out-of-order engine segments can still have useful text.
+    Keeping their offsets allows the Editor to explain an export limitation
+    without preventing normal History or recovery saves.
+    """
+    if not isinstance(value, (tuple, list)) or len(value) > MAX_TIMINGS:
+        raise HistoryError("Transcript timing data must contain at most 100,000 offset pairs.")
+    normalized = []
+    for pair in value:
+        if not isinstance(pair, (tuple, list)) or len(pair) != 2:
+            raise HistoryError("Transcript timing data contains an invalid offset pair.")
+        start, end = pair
+        if type(start) is not int or type(end) is not int or not 0 <= start <= end <= MAX_TIMING_OFFSET:
+            raise HistoryError("Transcript timing offsets must be whole milliseconds within the supported range.")
+        normalized.append((start, end))
+    return tuple(normalized)
+
+
+def _stored_timings(value) -> tuple[tuple[int, int], ...]:
+    if not isinstance(value, str) or len(value) > MAX_TIMING_BYTES:
+        raise HistoryError("The saved transcript timing data is invalid or too large.")
+    try:
+        if len(value.encode("utf-8")) > MAX_TIMING_BYTES:
+            raise HistoryError("The saved transcript timing data is too large.")
+        decoded = json.loads(value)
+    except (ValueError, RecursionError, UnicodeError) as error:
+        raise HistoryError("The saved transcript timing data is invalid.") from error
+    return _timings(decoded)
+
+
+def _encode_timings(value: tuple[tuple[int, int], ...]) -> str:
+    return json.dumps(value, separators=(",", ":"))
+
+
 def _timestamp(value: str) -> str:
     if not isinstance(value, str) or len(value) > 40:
         raise HistoryError("The saved transcript date is invalid.")
@@ -121,6 +170,22 @@ def _timestamp(value: str) -> str:
 
 def _now() -> str:
     return datetime.now(timezone.utc).isoformat(timespec="microseconds")
+
+
+def _next_timestamp(connection: sqlite3.Connection, table: str, column: str) -> str:
+    # Wall clocks can repeat a tick (or move backward). Keep newest-first
+    # ordering tied to successful saves, including after reopening the store.
+    projection = _metadata_projection(((column, 40),))
+    row = connection.execute(f"SELECT {projection} FROM {table} ORDER BY {column} DESC LIMIT 1").fetchone()
+    current = datetime.fromisoformat(_now())
+    if row is not None:
+        previous = datetime.fromisoformat(_timestamp(row[column]))
+        if current <= previous:
+            try:
+                current = previous + timedelta(microseconds=1)
+            except OverflowError as error:
+                raise HistoryError("The latest History date is outside the supported range.") from error
+    return current.astimezone(timezone.utc).isoformat(timespec="microseconds")
 
 
 def _is_link(metadata) -> bool:
@@ -205,7 +270,7 @@ class HistoryStore:
             else:
                 self._connection = sqlite3.connect(":memory:", isolation_level=None)
             self._connection.row_factory = sqlite3.Row
-            self._connection.setlimit(sqlite3.SQLITE_LIMIT_LENGTH, MAX_TRANSCRIPT_BYTES + 8192)
+            self._connection.setlimit(sqlite3.SQLITE_LIMIT_LENGTH, MAX_TRANSCRIPT_BYTES + MAX_TIMING_BYTES + 8192)
             self._connection.execute("PRAGMA trusted_schema=OFF")
             self._connection.execute("PRAGMA temp_store=MEMORY")
             self._connection.execute("PRAGMA synchronous=FULL")
@@ -282,31 +347,42 @@ class HistoryStore:
 
     def _initialize_schema(self) -> None:
         version = self._connection.execute("PRAGMA user_version").fetchone()[0]
-        if version not in (0, 1):
+        if version not in (0, 1, 2):
             raise HistoryError("This History was created by a newer app. Open it with that version to keep your saved transcripts.")
         if version == 0:
             tables = self._connection.execute("SELECT name FROM sqlite_master WHERE type='table'").fetchall()
             if tables:
                 raise HistoryError("The History database format is not recognized. Keep the file and choose another History folder.")
             with self._transaction() as connection:
-                connection.execute("CREATE TABLE entries (id TEXT PRIMARY KEY, title TEXT NOT NULL, text TEXT NOT NULL, suggested_name TEXT NOT NULL, created_at TEXT NOT NULL, model TEXT NOT NULL, language TEXT NOT NULL)")
-                connection.execute("CREATE TABLE drafts (id TEXT PRIMARY KEY, title TEXT NOT NULL, text TEXT NOT NULL, updated_at TEXT NOT NULL)")
+                connection.execute("CREATE TABLE entries (id TEXT PRIMARY KEY, title TEXT NOT NULL, text TEXT NOT NULL, suggested_name TEXT NOT NULL, created_at TEXT NOT NULL, model TEXT NOT NULL, language TEXT NOT NULL, timings TEXT NOT NULL DEFAULT '[]')")
+                connection.execute("CREATE TABLE drafts (id TEXT PRIMARY KEY, title TEXT NOT NULL, text TEXT NOT NULL, updated_at TEXT NOT NULL, timings TEXT NOT NULL DEFAULT '[]')")
                 connection.execute("CREATE INDEX entries_date ON entries(created_at DESC, id DESC)")
                 connection.execute("CREATE INDEX drafts_date ON drafts(updated_at DESC, id DESC)")
-                connection.execute("PRAGMA user_version=1")
+                connection.execute("PRAGMA user_version=2")
+        elif version == 1:
+            # Both column additions and the version bump commit together. A
+            # malformed old schema leaves its original records/schema intact.
+            with self._transaction() as connection:
+                connection.execute("SELECT id,title,text,suggested_name,created_at,model,language FROM entries LIMIT 0")
+                connection.execute("SELECT id,title,text,updated_at FROM drafts LIMIT 0")
+                connection.execute("ALTER TABLE entries ADD COLUMN timings TEXT NOT NULL DEFAULT '[]'")
+                connection.execute("ALTER TABLE drafts ADD COLUMN timings TEXT NOT NULL DEFAULT '[]'")
+                connection.execute("PRAGMA user_version=2")
         # Validate structure without loading transcript text.
-        self._connection.execute("SELECT id,title,text,suggested_name,created_at,model,language FROM entries LIMIT 0")
-        self._connection.execute("SELECT id,title,text,updated_at FROM drafts LIMIT 0")
+        self._connection.execute("SELECT id,title,text,suggested_name,created_at,model,language,timings FROM entries LIMIT 0")
+        self._connection.execute("SELECT id,title,text,updated_at,timings FROM drafts LIMIT 0")
 
     @staticmethod
     def _entry(row) -> Entry:
         return Entry(_identifier(row["id"]), _label(row["title"], MAX_TITLE, "title"), _text(row["text"]),
                      _label(row["suggested_name"], MAX_TITLE, "suggested filename"), _timestamp(row["created_at"]),
-                     _label(row["model"], MAX_TITLE, "model", empty=True), _label(row["language"], 80, "language", empty=True))
+                     _label(row["model"], MAX_TITLE, "model", empty=True), _label(row["language"], 80, "language", empty=True),
+                     _stored_timings(row["timings"]))
 
     @staticmethod
     def _draft(row) -> Draft:
-        return Draft(_identifier(row["id"]), _label(row["title"], MAX_TITLE, "title"), _text(row["text"]), _timestamp(row["updated_at"]))
+        return Draft(_identifier(row["id"]), _label(row["title"], MAX_TITLE, "title"), _text(row["text"]), _timestamp(row["updated_at"]),
+                     _stored_timings(row["timings"]))
 
     def _read(self, query: str, parameters=()):
         try:
@@ -314,15 +390,20 @@ class HistoryStore:
         except sqlite3.Error as error:
             raise HistoryError("Could not read local History. Keep the database file for recovery and check its permissions.") from error
 
-    def add_result(self, text: str, suggested_name: str, *, model: str = "", language: str = "") -> Entry:
+    def add_result(self, text: str, suggested_name: str, *, model: str = "", language: str = "", timings=()) -> Entry:
         name = _basename(suggested_name, MAX_TITLE, "suggested filename")
         title = _label(Path(name).stem, MAX_TITLE, "title")
-        entry = Entry(uuid.uuid4().hex, title, _text(text), name, _now(),
-                      _basename(model, MAX_TITLE, "model", empty=True), _label(language, 80, "language", empty=True))
+        text = _text(text)
+        model, language = _basename(model, MAX_TITLE, "model", empty=True), _label(language, 80, "language", empty=True)
+        timings = _timings(timings)
         with self._transaction() as connection:
             if connection.execute("SELECT COUNT(*) FROM entries").fetchone()[0] >= MAX_ENTRIES:
                 raise HistoryError(f"History contains {MAX_ENTRIES} results. Delete some saved results before adding another.")
-            connection.execute("INSERT INTO entries VALUES (?,?,?,?,?,?,?)", tuple(entry.__dict__.values()))
+            entry = Entry(uuid.uuid4().hex, title, text, name, _next_timestamp(connection, "entries", "created_at"),
+                          model, language, timings)
+            connection.execute("INSERT INTO entries (id,title,text,suggested_name,created_at,model,language,timings) VALUES (?,?,?,?,?,?,?,?)",
+                               (entry.id, entry.title, entry.text, entry.suggested_name, entry.created_at,
+                                entry.model, entry.language, _encode_timings(entry.timings)))
         return entry
 
     def list_entries(self, query: str = "") -> list[Entry]:
@@ -331,14 +412,14 @@ class HistoryStore:
         query = query.strip().casefold()
         # Metadata only: searching never materializes transcript bodies. Python
         # casefold gives reliable matching for non-ASCII recording names.
-        rows = self._read(f"SELECT {_ENTRY_METADATA},'' AS text FROM entries ORDER BY created_at DESC,id DESC LIMIT ?", (MAX_ENTRIES + 1,))
+        rows = self._read(f"SELECT {_ENTRY_METADATA},'' AS text,'[]' AS timings FROM entries ORDER BY created_at DESC,id DESC LIMIT ?", (MAX_ENTRIES + 1,))
         if len(rows) > MAX_ENTRIES:
             raise HistoryError("History has too many results to open safely.")
         entries = [self._entry(row) for row in rows]
         return [entry for entry in entries if not query or any(query in value.casefold() for value in (entry.title, entry.suggested_name, entry.model))]
 
     def get_entry(self, identifier: str) -> Entry:
-        rows = self._read(f"SELECT {_ENTRY_METADATA},text FROM entries WHERE id=?", (_identifier(identifier),))
+        rows = self._read(f"SELECT {_ENTRY_METADATA},text,{_TIMINGS_PROJECTION} FROM entries WHERE id=?", (_identifier(identifier),))
         if not rows:
             raise HistoryError("This saved transcript is no longer in History.")
         return self._entry(rows[0])
@@ -353,23 +434,25 @@ class HistoryStore:
         with self._transaction() as connection:
             connection.execute("DELETE FROM entries WHERE id=?", (_identifier(identifier),))
 
-    def save_draft(self, identifier: str, text: str, title: str) -> Draft:
-        draft = Draft(_identifier(identifier), _label(title, MAX_TITLE, "title"), _text(text), _now())
+    def save_draft(self, identifier: str, text: str, title: str, *, timings=()) -> Draft:
+        identifier, title, text, timings = _identifier(identifier), _label(title, MAX_TITLE, "title"), _text(text), _timings(timings)
         with self._transaction() as connection:
-            exists = connection.execute("SELECT 1 FROM drafts WHERE id=?", (draft.id,)).fetchone()
+            exists = connection.execute("SELECT 1 FROM drafts WHERE id=?", (identifier,)).fetchone()
             if not exists and connection.execute("SELECT COUNT(*) FROM drafts").fetchone()[0] >= MAX_DRAFTS:
                 raise HistoryError(f"There are {MAX_DRAFTS} recovery drafts. Recover or discard older drafts before saving another.")
-            connection.execute("INSERT INTO drafts VALUES (?,?,?,?) ON CONFLICT(id) DO UPDATE SET title=excluded.title,text=excluded.text,updated_at=excluded.updated_at", tuple(draft.__dict__.values()))
+            draft = Draft(identifier, title, text, _next_timestamp(connection, "drafts", "updated_at"), timings)
+            connection.execute("INSERT INTO drafts (id,title,text,updated_at,timings) VALUES (?,?,?,?,?) ON CONFLICT(id) DO UPDATE SET title=excluded.title,text=excluded.text,updated_at=excluded.updated_at,timings=excluded.timings",
+                               (draft.id, draft.title, draft.text, draft.updated_at, _encode_timings(draft.timings)))
         return draft
 
     def list_drafts(self) -> list[Draft]:
-        rows = self._read(f"SELECT {_DRAFT_METADATA},'' AS text FROM drafts ORDER BY updated_at DESC,id DESC LIMIT ?", (MAX_DRAFTS + 1,))
+        rows = self._read(f"SELECT {_DRAFT_METADATA},'' AS text,'[]' AS timings FROM drafts ORDER BY updated_at DESC,id DESC LIMIT ?", (MAX_DRAFTS + 1,))
         if len(rows) > MAX_DRAFTS:
             raise HistoryError("There are too many recovery drafts to open safely.")
         return [self._draft(row) for row in rows]
 
     def get_draft(self, identifier: str) -> Draft:
-        rows = self._read(f"SELECT {_DRAFT_METADATA},text FROM drafts WHERE id=?", (_identifier(identifier),))
+        rows = self._read(f"SELECT {_DRAFT_METADATA},text,{_TIMINGS_PROJECTION} FROM drafts WHERE id=?", (_identifier(identifier),))
         if not rows:
             raise HistoryError("This recovery draft is no longer available.")
         return self._draft(rows[0])

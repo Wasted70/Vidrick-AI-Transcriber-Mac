@@ -23,6 +23,8 @@ WHAT WORKS AT THIS STAGE
 - Keyboard shortcuts for adding/selecting/removing files and opening settings.
 - A local transcript Editor with .txt Open/Save/Save As, find and replace,
   undo/redo, unsaved-change protection, word/character counts, and text sizing.
+- SRT and VTT subtitle exports using real segment timings and current Editor
+  text. Timings remain available through History and autosave recovery.
 - One-recording local transcription on native arm64 macOS using an existing
   whisper.cpp engine/model, with genuine engine progress, cancellation, and
   a finished transcript that opens as an unsaved document in the Editor.
@@ -44,8 +46,9 @@ the one selected recording and may create a temporary converted audio file.
 The app does not upload recordings. Downloads begin only after clicking Set Up
 on a Mac. The Windows UI preview never downloads or installs setup components,
 starts transcription, saves setup preferences, or reads selected recordings.
-The Editor reads and writes the .txt files you explicitly open or save. History
-also keeps finished transcript text locally, and autosave keeps recovery drafts
+The Editor reads and writes the .txt files you explicitly open or save, and
+writes .srt/.vtt files when you choose Export. History also keeps finished
+transcript text and segment timings locally, and autosave keeps recovery drafts
 in the project's private local library. It never copies source recordings.
 There are no bundled models, production account connections, license
 requests, analytics, or updates. No Windows source,
@@ -127,7 +130,7 @@ macOS window controls or implement native vibrancy. Sidebar/toolbar structure
 draws on Apple's macOS design guidance:
 https://developer.apple.com/design/human-interface-guidelines/designing-for-macos/
 https://developer.apple.com/design/human-interface-guidelines/toolbars
-Formatted exports, recording output-folder selection, account management,
+PDF/Word exports, recording output-folder selection, account management,
 and updates remain unavailable. Drag and drop is not implemented.
 Recording selections, language/task choices, and window preferences are temporary.
 On a Mac, successful setup paths are saved locally for the next launch. Text
@@ -138,6 +141,43 @@ installation, Apple-chip performance, and Mac compatibility still need a Mac.
 It never uses the installed Windows Vidrick app or its project, data, models,
 accounts, or settings. The -E flag ignores Python environment overrides, and
 -B prevents bytecode files from being written during the preview.
+
+EXPORTING SUBTITLES
+In the Editor, choose Export, then SubRip (.srt) or WebVTT (.vtt), and select
+a destination. Exports use current edits without marking the .txt document
+saved, replacing its path, or removing its recovery draft. Cancel and failed
+writes leave the Editor unchanged. Existing files require the save dialog's
+overwrite confirmation; files changed during writing are preserved.
+
+New transcriptions retain segment timings even when Show timestamps is off.
+When editing text with hidden timestamps, keep one nonempty line per segment;
+export rejects a changed line count rather than estimating new timing. With
+visible timestamps, edit words or line breaks inside each timed segment:
+
+  [00:00:01.250 --> 00:00:03.000] Hello, world!
+
+Each cue needs an end later than its start, and cues must stay in start-time
+order. Multiline captions work inside timestamped segments; blank lines can
+separate cues but cannot split a caption. No automatic timing estimation,
+caption reflow, or subtitle import is included. Plain text without segment
+timings cannot be exported as subtitles.
+
+History and recovery keep timing metadata alongside text. Older timestamped
+results and timestamped .txt files can also export. Old results without any
+timings must be transcribed again. Saving a .txt copy without visible timestamps
+does not embed hidden timing metadata in that external file; reopen the result
+from History to retain it, or export subtitles before closing the Editor.
+
+Output is UTF-8 without a BOM, with LF line endings. SRT has numbered blocks
+and comma milliseconds; VTT starts with WEBVTT and uses dot milliseconds.
+Transcript text is treated literally: &, <, and > are escaped, not interpreted
+as subtitle styling. SRT player support for literal entities can vary. Input
+is limited to 8 MiB and 100,000 cues, with a 16 MiB subtitle output limit.
+Files are staged beside the destination and replaced only after a complete
+write. Symbolic-link and nonregular destinations are rejected.
+Format references:
+https://www.w3.org/TR/webvtt1/
+https://www.loc.gov/preservation/digital/formats/fdd/fdd000569.shtml
 
 DEVELOPMENT STATUS
 GitHub holds ongoing development updates. Friend testing is deferred until
@@ -277,7 +317,7 @@ explains where they are. Cleanup failures keep the window open with an error.
 An OS/app crash may also leave temporary files; draft recovery does not resume
 interrupted transcription or clean up interrupted engine jobs.
 There is no batch processing, playback, speaker separation,
-or Word/SRT/VTT export yet. Never commit recordings, models, or local preferences.
+or Word export yet. Never commit recordings, models, or local preferences.
 
 IN-APP ENGINE AND MODEL SETUP
 Easy setup has three multilingual choices:
@@ -334,7 +374,7 @@ On native Mac, every nonempty completed result is stored locally before the
 Editor handoff. History shows newest results first, with their title, date and
 model. Search filters titles/model names; Open loads an editable copy, Rename
 changes its library title, and Delete removes only that selected saved result.
-Original recordings, exported .txt files, and current Editor edits are not
+Original recordings, exported files, and current Editor edits are not
 changed by deleting History. Editing a reopened result does not replace its
 original History text; use Save/Save As to keep an edited .txt copy.
 
@@ -343,7 +383,7 @@ and periodically during continued typing. Its recovery status shows whether
 the current text has been kept locally. A sudden crash may lose the last few
 seconds of typing; this is not an undo-history backup or a recording backup.
 After restart, History offers Restore and Discard for saved recovery drafts.
-Restore opens an untitled editable copy and requires Save/Save As for export,
+Restore opens an untitled editable copy; use Save/Save As or subtitle Export,
 so it cannot overwrite a file that changed while the app was closed.
 
 Successful Save clears that document's recovery draft. Cancelled or failed
@@ -356,8 +396,8 @@ successful snapshot; save a .txt copy if recovery storage is unavailable.
 The prototype keeps its private SQLite library under the project:
   local-history/mac/             native Mac results and recovery drafts
   local-history/windows-preview/ isolated Windows UI development drafts
-These directories are Git-ignored. They contain transcript text and minimal
-metadata, not recordings, account data or model files. They are local files,
+These directories are Git-ignored. They contain transcript text, segment
+timings, and minimal metadata, not recordings, account data or model files. They are local files,
 not encrypted storage or a cloud backup. Moving/deleting the project can make
 this library unavailable; keep important work with Save/Save As outside it.
 The development library holds up to 2,000 results and 100 recovery drafts;
@@ -366,6 +406,8 @@ Restoring an existing draft still works when the draft limit is reached.
 Only one app instance may use each library at a time. If another instance has
 it open, close that instance and use History's Refresh to retry. Storage is
 transactional; existing results are not silently removed to free space.
+The subtitle update migrates the library from schema 1 to schema 2 atomically,
+preserving old text. Older app revisions cannot open a schema 2 library.
 
 The Windows UI preview can exercise local History and Editor recovery using
 its own separate library. It still cannot run transcription or install models.
@@ -386,7 +428,8 @@ NEXT SMALL MILESTONE
 When the owner is ready, validate on an actual M-series Mac: native preflight,
 Aqua rendering, Command shortcuts, local engine/model setup, WAV and converted
 media, real progress, cancellation during conversion/model loading/inference,
-and saving the final transcript. Check that cancelling or closing leaves no
+and saving the final transcript. Check SRT/VTT export from the Editor, reopened
+History results, and recovered drafts. Check that cancelling or closing leaves no
 child process or temporary job files. Also check no-speech and failure recovery.
 Licensing integration, packaging, signing, notarization, hosted builds, GPU
 acceleration, and packaged app releases are separately scoped later work.

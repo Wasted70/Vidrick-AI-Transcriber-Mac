@@ -108,12 +108,34 @@ class HistoryStoreTests(unittest.TestCase):
         self.assertEqual(self.store.list_drafts()[0].text, "")
 
     def test_empty_draft_is_retained_and_drafts_sort_by_last_update(self):
-        first, second = uuid.uuid4().hex, uuid.uuid4().hex
-        self.store.save_draft(first, "initial", "First")
-        self.store.save_draft(second, "second", "Second")
-        self.store.save_draft(first, "", "First")
+        first, second = "1" * 32, "2" * 32
+        with patch("vidrick_mac.history_store._now", return_value="2026-10-23T12:00:00.000000+00:00"):
+            self.store.save_draft(first, "initial", "First")
+            self.store.save_draft(second, "second", "Second")
+            self.store.save_draft(first, "", "First")
         self.assertEqual([draft.id for draft in self.store.list_drafts()], [first, second])
         self.assertEqual(self.store.get_draft(first).text, "")
+
+    def test_result_order_survives_equal_clock_ticks(self):
+        with patch("vidrick_mac.history_store._now", return_value="2026-10-23T12:00:00.000000+00:00"), \
+                patch("vidrick_mac.history_store.uuid.uuid4", side_effect=[uuid.UUID(int=2), uuid.UUID(int=1)]):
+            first = self.store.add_result("First", "First.txt")
+            second = self.store.add_result("Second", "Second.txt")
+        self.assertEqual([entry.id for entry in self.store.list_entries()], [second.id, first.id])
+        self.assertGreater(second.created_at, first.created_at)
+
+    def test_save_order_survives_restart_and_clock_rollback(self):
+        first, second = "1" * 32, "2" * 32
+        with patch("vidrick_mac.history_store._now", return_value="2026-10-23T12:00:00.000000+00:00"):
+            self.store.save_draft(first, "First", "First")
+            entry = self.store.add_result("First", "First.txt")
+        self.reopen()
+        with patch("vidrick_mac.history_store._now", return_value="2026-10-22T12:00:00.000000+00:00"):
+            self.store.save_draft(second, "Second", "Second")
+            self.store.save_draft(first, "Latest edit", "First")
+            latest = self.store.add_result("Latest", "Latest.txt")
+        self.assertEqual([draft.id for draft in self.store.list_drafts()], [first, second])
+        self.assertEqual([item.id for item in self.store.list_entries()], [latest.id, entry.id])
 
     def test_delete_draft_preserves_history(self):
         entry = self.store.add_result("Result", "Result.txt")

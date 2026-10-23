@@ -1,10 +1,12 @@
 """Local plain-text transcript editor; no recording or network access."""
 
 from uuid import uuid4
+from pathlib import Path
 
 from .history_store import HistoryError
 from .preview_model import COLORS as C
 from .transcript_io import TranscriptConflict, TranscriptError, read_transcript, write_transcript
+from .subtitle_io import SubtitleError, cues_for_text, write_subtitles
 
 
 class TranscriptEditor:
@@ -17,6 +19,7 @@ class TranscriptEditor:
         self.document = None
         self.saved_text = ""
         self.suggested_name = None
+        self.timings = ()
         self.busy = False
         self.refresh_id = None
         self.search_visible = False
@@ -26,6 +29,7 @@ class TranscriptEditor:
         self._draft_id = uuid4().hex
         self._draft_written = False
         self._last_recovery_text = None
+        self._last_recovery_timings = ()
         self._recovery_after = None
         self._recovery_deadline = None
         self._recovery_disposed = False
@@ -39,6 +43,7 @@ class TranscriptEditor:
         self.match_case = self.tk.BooleanVar(value=False)
         self.match_label = self.tk.StringVar(value="Enter text to find")
         self.font_size = self.tk.StringVar(value="12")
+        self.subtitle_status = self.tk.StringVar(value="SRT and VTT exports use transcript segment timings.")
         shell, body = ui.card(parent, padding=14)
         shell.pack(fill="both", expand=True)
         body.columnconfigure(0, weight=1)
@@ -47,6 +52,12 @@ class TranscriptEditor:
         toolbar = self.tk.Frame(body, bg=C["card"])
         toolbar.grid(row=0, column=0, sticky="ew", pady=(0, 5))
         ui.label(toolbar, "Transcript", size=13, bold=True).pack(side="left")
+        self.export_button = self.ttk.Menubutton(toolbar, text="Export…", style="Preview.TMenubutton")
+        self.export_menu = self.tk.Menu(self.export_button, tearoff=False)
+        self.export_menu.add_command(label="SubRip (.srt)…", command=lambda: self.export_subtitles("srt"))
+        self.export_menu.add_command(label="WebVTT (.vtt)…", command=lambda: self.export_subtitles("vtt"))
+        self.export_button.configure(menu=self.export_menu)
+        self.export_button.pack(side="right", padx=(8, 0))
         ui.button(toolbar, "Save As…", self.save_as).pack(side="right")
         self.save_button = ui.button(toolbar, "Save", self.save, primary=True)
         self.save_button.pack(side="right", padx=6)
@@ -98,6 +109,10 @@ class TranscriptEditor:
                             muted=True, anchor="e", justify="right")
         recovery.grid(row=0, column=1, sticky="ew", padx=(12, 0))
         recovery.bind("<Configure>", lambda event: recovery.configure(
+            wraplength=max(100, event.width - 4)))
+        subtitle = ui.label(footer, textvariable=self.subtitle_status, size=9, muted=True)
+        subtitle.grid(row=1, column=0, columnspan=2, sticky="ew", pady=(5, 0))
+        subtitle.bind("<Configure>", lambda event: subtitle.configure(
             wraplength=max(100, event.width - 4)))
         self.find_text.trace_add("write", self._query_changed)
         self.match_case.trace_add("write", self._query_changed)
@@ -213,16 +228,19 @@ class TranscriptEditor:
         if store is None:
             self._recovery_message("Recovery unavailable · Save a copy")
             return False
-        if text == self._last_recovery_text and self._draft_written:
+        timings = getattr(self, "timings", ())
+        if (text == self._last_recovery_text and self._draft_written
+                and timings == getattr(self, "_last_recovery_timings", ())):
             self._recovery_message("Saved locally")
             return True
         try:
-            store.save_draft(self._draft_id, text, self._draft_title())
+            store.save_draft(self._draft_id, text, self._draft_title(), timings=timings)
         except HistoryError:
             self._recovery_message("Recovery unavailable · Save a copy")
             return False
         self._draft_written = True
         self._last_recovery_text = text
+        self._last_recovery_timings = timings
         self._recovery_message("Saved locally")
         self._notify_history()
         return True
@@ -344,6 +362,8 @@ class TranscriptEditor:
             self.document = document
             self.saved_text = document.text
             self.suggested_name = None
+            self.timings = ()
+            self._subtitle_hint()
             self.active_match = None
             self.text.mark_set("insert", "1.0")
             self.text.yview_moveto(0)
@@ -355,7 +375,7 @@ class TranscriptEditor:
         finally:
             self.busy = False
 
-    def load_transcription(self, text: str, suggested_name: str = "Transcript.txt") -> bool:
+    def load_transcription(self, text: str, suggested_name: str = "Transcript.txt", *, timings=()) -> bool:
         """Accept a finished result only when the current document can be replaced.
 
         False leaves ownership of the result with the caller, so it can remain
@@ -367,13 +387,13 @@ class TranscriptEditor:
         try:
             if not self._confirm_changes("opening the finished transcript"):
                 return False
-            self._show_unsaved(text, suggested_name)
+            self._show_unsaved(text, suggested_name, timings=timings)
             self._replacement_recovery()
             return True
         finally:
             self.busy = False
 
-    def _show_unsaved(self, text, suggested_name):
+    def _show_unsaved(self, text, suggested_name, *, timings=()):
         self.cancel_refresh()
         self.search_visible = False
         self.find_panel.grid_remove()
@@ -393,6 +413,8 @@ class TranscriptEditor:
         self.document = None
         self.saved_text = ""
         self.suggested_name = suggested_name or "Transcript.txt"
+        self.timings = timings
+        self._subtitle_hint()
         self.text.mark_set("insert", "1.0")
         self.text.yview_moveto(0)
         self.ui.select_tab("Editor")
@@ -421,14 +443,15 @@ class TranscriptEditor:
                 # Adopt the selected snapshot instead of consuming a new slot.
                 # Its normalized text remains durable before display, including
                 # when the recovery list is already at its capacity limit.
-                store.save_draft(draft.id, text, title)
+                store.save_draft(draft.id, text, title, timings=getattr(draft, "timings", ()))
             except HistoryError as exc:
                 self._recovery_message("Recovery unavailable · Save a copy")
                 self._messages().showerror("Could not restore recovery", str(exc), parent=self.root)
                 return False
-            previous = (self.content(), self.document, self.saved_text, self.suggested_name)
+            previous = (self.content(), self.document, self.saved_text, self.suggested_name,
+                        getattr(self, "timings", ()))
             try:
-                self._show_unsaved(text, title)
+                self._show_unsaved(text, title, timings=getattr(draft, "timings", ()))
                 if not text:
                     # Deleting all text can itself be the edit being recovered.
                     # Keep that empty copy unsaved until Save As or discard.
@@ -440,7 +463,8 @@ class TranscriptEditor:
                 try:
                     self.text.delete("1.0", "end")
                     self.text.insert("1.0", previous[0])
-                    self.document, self.saved_text, self.suggested_name = previous[1:]
+                    self.document, self.saved_text, self.suggested_name, self.timings = previous[1:]
+                    self._subtitle_hint()
                     self.refresh()
                 except self.tk.TclError:
                     pass
@@ -453,6 +477,7 @@ class TranscriptEditor:
             self._draft_id = draft.id
             self._draft_written = True
             self._last_recovery_text = text
+            self._last_recovery_timings = getattr(draft, "timings", ())
             cleared = True
             for draft_id in retired:
                 try:
@@ -462,6 +487,48 @@ class TranscriptEditor:
             self._recovery_message("Saved locally" if cleared else
                                    "Previous recovery copy kept in History")
             self._notify_history()
+            return True
+        finally:
+            self.busy = False
+
+    def _subtitle_hint(self):
+        if hasattr(self, "subtitle_status"):
+            self.subtitle_status.set(
+                "Subtitle timing is retained. Keep one subtitle per line when timestamps are hidden."
+                if getattr(self, "timings", ()) else
+                "SRT and VTT exports need timestamped segments, such as a finished transcription.")
+
+    def export_subtitles(self, format):
+        """Export the current text without replacing the Editor's saved document."""
+        if self.blocked:
+            return False
+        self.busy = True
+        try:
+            self.flush_recovery()
+            try:
+                if format not in ("srt", "vtt"):
+                    raise SubtitleError("Choose SubRip (.srt) or WebVTT (.vtt).")
+                cues = cues_for_text(self.content(), getattr(self, "timings", ()))
+            except SubtitleError as exc:
+                self._messages().showerror("Could not export subtitles", str(exc), parent=self.root)
+                return False
+            name = self.document.path.name if self.document else self.suggested_name or "Transcript.txt"
+            name = str(name).replace("\\", "/").rsplit("/", 1)[-1]
+            name = Path(name).stem + "." + format
+            label = "SubRip subtitles" if format == "srt" else "WebVTT subtitles"
+            path = self.ui.filedialog.asksaveasfilename(
+                parent=self.root, title=f"Export {format.upper()} subtitles",
+                defaultextension="." + format, initialfile=name,
+                filetypes=[(label, "*." + format)], confirmoverwrite=True)
+            if not path:
+                return False
+            try:
+                write_subtitles(path, cues, format)
+            except SubtitleError as exc:
+                self._messages().showerror("Could not export subtitles", str(exc), parent=self.root)
+                return False
+            if hasattr(self, "subtitle_status"):
+                self.subtitle_status.set(f"Exported {len(cues):,} subtitles as {format.upper()} · {Path(path).name}")
             return True
         finally:
             self.busy = False

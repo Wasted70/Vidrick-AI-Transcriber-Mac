@@ -98,6 +98,17 @@ class HistoryPanelTkTests(unittest.TestCase):
         self.editor.flush_recovery()
         self.assertEqual(self.store.get_entry(entry.id).text, entry.text)
 
+    def test_open_preserves_subtitle_timing_in_editor_handoff(self):
+        timings = ((25, 1050), (1600, 2300))
+        entry = self.store.add_result("First cue\nSecond cue\n", "Timed transcript.txt", timings=timings)
+        self.panel.refresh()
+        self.panel.tree.selection_set(entry.id)
+        with patch.object(self.editor, "load_transcription", wraps=self.editor.load_transcription) as load:
+            self.assertTrue(self.panel.open_selected())
+        load.assert_called_once_with(entry.text, entry.suggested_name, timings=timings)
+        self.assertEqual(self.editor.content(), entry.text)
+        self.assertEqual(self.store.get_entry(entry.id).timings, timings)
+
     def test_open_respects_unsaved_editor_cancel(self):
         entry = self.add_entry()
         self.editor.text.insert("1.0", "Current unsaved draft")

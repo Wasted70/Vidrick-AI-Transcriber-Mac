@@ -104,7 +104,7 @@ class PreviewUI:
         if native_theme:
             # Aqua owns control colors; a custom white foreground can disappear
             # on its native light button face, which ignores background colors.
-            for name in ("Preview.TButton", "Primary.Preview.TButton", "Preview.TCombobox",
+            for name in ("Preview.TButton", "Primary.Preview.TButton", "Preview.TMenubutton", "Preview.TCombobox",
                          "Preview.TCheckbutton", "Header.Preview.TCheckbutton"):
                 style.configure(name, font=(self.family, 10))
             return
@@ -114,6 +114,9 @@ class PreviewUI:
                         focuscolor=C["accent"], borderwidth=1, relief="flat")
         style.map("Preview.TButton", background=[("disabled", C["panel"]), ("active", C["card_hover"])],
                   foreground=[("disabled", C["muted"])])
+        style.configure("Preview.TMenubutton", font=(self.family, 10), foreground=C["text"],
+                        arrowcolor=C["muted"], focuscolor=C["accent"], arrowsize=9)
+        style.map("Preview.TMenubutton", foreground=[("disabled", C["muted"])])
         style.configure("Primary.Preview.TButton", background=C["accent"], foreground=C["on_accent"],
                         bordercolor=C["accent"], lightcolor=C["accent"], darkcolor=C["accent"],
                         focuscolor=C["on_accent"])
@@ -168,6 +171,7 @@ class PreviewUI:
         for name, normal, hover, edge in (
             ("Preview.TButton", C["card"], C["card_hover"], C["border"]),
             ("Primary.Preview.TButton", C["accent"], C["accent_hover"], C["accent"]),
+            ("Preview.TMenubutton", C["card"], C["card_hover"], C["border"]),
         ):
             images = []
             for fill, border in ((normal, edge), (hover, edge), (hover, C["accent"]),
@@ -180,10 +184,13 @@ class PreviewUI:
                                  ("disabled", images[3]), ("pressed", images[2]),
                                  ("focus", images[4]), ("active", images[1]),
                                  border=7, padding=0, sticky="nsew")
+            kind = "Menubutton" if name.endswith("TMenubutton") else "Button"
+            children = [(f"{kind}.label", {"sticky": "nsew"})]
+            if kind == "Menubutton":
+                children.insert(0, ("Menubutton.indicator", {"side": "right", "sticky": "e"}))
             style.layout(name, [(element, {"sticky": "nsew", "children": [
-                ("Button.focus", {"sticky": "nsew", "children": [
-                    ("Button.padding", {"sticky": "nsew", "children": [
-                        ("Button.label", {"sticky": "nsew"})]})]})]})])
+                (f"{kind}.focus", {"sticky": "nsew", "children": [
+                    (f"{kind}.padding", {"sticky": "nsew", "children": children})]})]})])
             # Transparent image corners must reveal the surface, never a
             # rectangular accent-colored ttk background underneath the corners.
             style.configure(name, padding=(10, 4), background=C["card"])
@@ -763,7 +770,8 @@ class PreviewUI:
         self.note(body, "Designed for Apple Silicon. Native Mac testing is still required.").pack(fill="x", pady=(0, 12))
         self.note(body, "A local text editor and a development transcription pipeline for Apple Silicon. "
                   "Set up the engine and models inside the app on your Mac. The Windows mode previews the UI only. "
-                  "Formatted exports, licensing, and automatic updates are not connected.").pack(fill="x", pady=(0, 24))
+                  "Export timed transcripts as SRT or VTT subtitles from the Editor. "
+                  "Licensing and automatic updates are not connected.").pack(fill="x", pady=(0, 24))
         self.tk.Frame(body, bg=C["border"], height=1).pack(fill="x", pady=(0, 20))
         self.label(body, "Account & updates", size=13, bold=True).pack(anchor="w", pady=(0, 8))
         self.note(body, "No customer account or license is accessed in this preview.").pack(fill="x", pady=(0, 16))

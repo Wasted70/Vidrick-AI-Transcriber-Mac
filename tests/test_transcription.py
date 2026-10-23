@@ -104,6 +104,7 @@ class TranscriptionTests(unittest.TestCase):
                                      "[00:00:01.250 --> 00:00:03.000] A second sentence.\n")
         self.assertEqual((result.suggested_name, result.segment_count, result.language),
                          ("Synthetic recording.txt", 2, "en"))
+        self.assertEqual(result.timings, ((0, 1250), (1250, 3000)))
         self.assertEqual(len(commands), 1)
         self.assertIn("-ng", commands[0])
         self.assertIn("-pp", commands[0])
@@ -128,6 +129,7 @@ class TranscriptionTests(unittest.TestCase):
                        translate=True, language="es", timestamps=False)
         result = pipeline.run_transcription(spec, self.cancel, self.events.append)
         self.assertEqual(result.text, "Hello, world!\nA second sentence.\n")
+        self.assertEqual(result.timings, ((0, 1250), (1250, 3000)))
         self.assertEqual(len(commands), 2)
         convert, transcribe = commands
         self.assertIn("-nostdin", convert)
@@ -306,6 +308,31 @@ class TranscriptionTests(unittest.TestCase):
     def test_empty_transcript_is_valid(self):
         result = pipeline._read_result(self.result_file({"transcription": []}), self.spec)
         self.assertEqual((result.text, result.segment_count), ("", 0))
+        self.assertEqual(result.timings, ())
+
+    def test_multiline_cues_keep_offsets_with_visible_and_hidden_timestamps(self):
+        path = self.result_file({"transcription": [
+            {"offsets": {"from": 25, "to": 1050}, "text": " First\r\nsecond\rthird "},
+            {"offsets": {"from": 1050, "to": 1500}, "text": " \n "},
+            {"offsets": {"from": 1600, "to": 2300}, "text": " Café 🌎 "},
+        ]})
+        visible = pipeline._read_result(path, self.spec)
+        hidden = pipeline._read_result(path, replace(self.spec, timestamps=False))
+        self.assertEqual(visible.text, "[00:00:00.025 --> 00:00:01.050] First\nsecond\nthird\n"
+                                      "[00:00:01.600 --> 00:00:02.300] Café 🌎\n")
+        self.assertEqual(hidden.text, "First second third\nCafé 🌎\n")
+        self.assertEqual(visible.timings, ((25, 1050), (1600, 2300)))
+        self.assertEqual(hidden.timings, visible.timings)
+        self.assertEqual(hidden.segment_count, 2)
+
+    def test_zero_duration_and_reordered_offsets_remain_available_for_export_validation(self):
+        path = self.result_file({"transcription": [
+            {"offsets": {"from": 2000, "to": 2000}, "text": "First"},
+            {"offsets": {"from": 1000, "to": 3000}, "text": "Second"},
+        ]})
+        result = pipeline._read_result(path, replace(self.spec, timestamps=False))
+        self.assertEqual(result.text, "First\nSecond\n")
+        self.assertEqual(result.timings, ((2000, 2000), (1000, 3000)))
 
     def test_result_rejects_invalid_timing_text_schema_and_unicode(self):
         valid = {"offsets": {"from": 0, "to": 1000}, "text": "text"}

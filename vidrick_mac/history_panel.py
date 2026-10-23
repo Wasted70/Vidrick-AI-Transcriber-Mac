@@ -265,7 +265,8 @@ class HistoryPanel:
             return False
         self.busy = True
         try:
-            return self.ui.editor_panel.load_transcription(entry.text, entry.suggested_name)
+            return self.ui.editor_panel.load_transcription(entry.text, entry.suggested_name,
+                                                           timings=entry.timings)
         finally:
             self.busy = False
             self.refresh()

@@ -74,6 +74,7 @@ class TranscriptResult:
     suggested_name: str
     segment_count: int
     language: str = ""
+    timings: tuple[tuple[int, int], ...] = ()
 
 
 @dataclass(frozen=True)
@@ -280,6 +281,7 @@ def _read_result(path: Path, spec: JobSpec) -> TranscriptResult:
     if len(segments) > MAX_SEGMENTS:
         raise TranscriptionError("The engine result contains too many transcript segments.")
     lines = []
+    timings = []
     size = 0
     count = 0
     for segment in segments:
@@ -297,7 +299,12 @@ def _read_result(path: Path, spec: JobSpec) -> TranscriptResult:
             raise TranscriptionError("The engine returned invalid segment timing.")
         if not text:
             continue
-        line = f"[{_milliseconds(start)} --> {_milliseconds(end)}] {text}" if spec.timestamps else text
+        # Hidden timestamps still need one Editor line per timed segment for
+        # subtitle export. Visible timestamp markers delimit multiline cues.
+        if spec.timestamps:
+            line = f"[{_milliseconds(start)} --> {_milliseconds(end)}] {text}"
+        else:
+            line = text.replace("\n", " ")
         try:
             size += len(line.encode("utf-8")) + 1
         except UnicodeError as error:
@@ -305,13 +312,14 @@ def _read_result(path: Path, spec: JobSpec) -> TranscriptResult:
         if size > MAX_TRANSCRIPT_BYTES:
             raise TranscriptionError("The finished transcript exceeds the 8 MiB Editor limit.")
         lines.append(line)
+        timings.append((start, end))
         count += 1
     metadata = result.get("result", {})
     language = metadata.get("language", "") if isinstance(metadata, dict) else ""
     if not isinstance(language, str) or len(language) > 32:
         language = ""
     text = "\n".join(lines) + ("\n" if lines else "")
-    return TranscriptResult(text, Path(spec.recording).stem + ".txt", count, language)
+    return TranscriptResult(text, Path(spec.recording).stem + ".txt", count, language, tuple(timings))
 
 
 def run_transcription(spec: JobSpec, cancel_event: threading.Event,
