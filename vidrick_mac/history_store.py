@@ -1,7 +1,7 @@
 """Private local transcript history and draft recovery, without recording I/O.
 
 Construction with no root is in-memory. The app explicitly selects its own
-project-local folder on launch. List methods return metadata (``text=''``);
+local data folder on launch. List methods return metadata (``text=''``);
 individual text and segment timings are read only by get_entry/get_draft.
 """
 
@@ -16,10 +16,10 @@ import sqlite3
 import stat
 import uuid
 
+from .environment import app_data_root, is_bundled_mac, prepare_bundled_data_directory
 from .transcript_io import MAX_TRANSCRIPT_BYTES
 
 
-PROJECT_ROOT = Path(__file__).resolve().parents[1]
 MAX_ENTRIES = 2000
 MAX_DRAFTS = 100
 MAX_TITLE = 240
@@ -220,19 +220,23 @@ def _private_root(root: Path) -> Path:
     if ".." in root.parts:
         raise HistoryError("History storage cannot contain parent-directory traversal.")
     root = root.absolute()
+    base = app_data_root()
     try:
-        relative = root.relative_to(PROJECT_ROOT)
+        relative = root.relative_to(base)
     except ValueError as error:
-        raise HistoryError("History storage must stay inside the Mac project folder.") from error
+        raise HistoryError("History storage must stay inside Vidrick's data directory.") from error
     if not relative.parts:
-        raise HistoryError("Choose a separate History folder inside the Mac project.")
+        raise HistoryError("History requires its own directory inside Vidrick's data directory.")
     _check_components(root)
-    current = PROJECT_ROOT
-    for part in relative.parts:
-        current = current / part
-        current.mkdir(mode=0o700, exist_ok=True)
-        if _is_link(current.lstat()) or not current.is_dir():
-            raise HistoryError("History storage must use regular directories without links.")
+    if is_bundled_mac():
+        prepare_bundled_data_directory(root)
+    else:
+        current = base
+        for part in relative.parts:
+            current = current / part
+            current.mkdir(mode=0o700, exist_ok=True)
+            if _is_link(current.lstat()) or not current.is_dir():
+                raise HistoryError("History storage must use regular directories without links.")
     root.chmod(0o700)
     return root
 

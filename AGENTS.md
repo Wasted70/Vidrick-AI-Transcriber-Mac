@@ -20,6 +20,8 @@
 
 - Subtitle exports are authorized: write SRT/VTT only to the user-selected destination, using current text and real segment offsets. Keep offsets with local History/recovery, never infer missing timings, and preserve Editor dirty state after export. Schema upgrades must preserve existing library data. Synthetic export tests belong under ignored test-output/.
 
+- The user authorized preparation of Vidrick.app and a drag-to-Applications DMG for private Apple Silicon testing. Ship the existing development UI with Python and Tk. Keep runtime writes in the installed app's own per-user Application Support folder, with source development data still in project-local folders. Use ignored build/ and dist/ for local, Mac-only packaging and an isolated build environment for packaging dependencies. The in-app setup still downloads verified inputs and builds tools when requested. Developer ID signing, notarization, and Vidrick's licensing are deferred for the private preview. Public distribution and hosted builds require separate scope. Do not change Gatekeeper settings or remove quarantine attributes.
+
 ## GitHub development updates
 
 - The user authorized publishing this isolated Mac project and automatically pushing completed, verified development changes from this chat. GitHub is set up for future sharing; the user explicitly deferred friend testing until they say the app is ready. Do not invite or notify testers or imply that a development push is a test release.

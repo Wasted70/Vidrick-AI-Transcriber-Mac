@@ -1,14 +1,13 @@
 """Independent Mac development UI with local transcription and text editing."""
 
 from . import __version__
-from .environment import inspect_environment
+from .environment import app_data_root, inspect_environment, is_bundled_mac
 from .editor import TranscriptEditor
 from .preview_model import COLORS as C, PREVIEW_TABS, PreviewState, display_filename
 from .preview_style import rounded_surface
 from .transcription_panel import TranscriptionPanel
 from .history_store import HistoryStore, HistoryError
 from .history_panel import HistoryPanel
-from pathlib import Path
 
 
 class PreviewUI:
@@ -790,11 +789,14 @@ def launch_preview(*, windows_preview: bool = False) -> None:
     from tkinter import filedialog, ttk
 
     root = tk.Tk()
-    title = "Vidrick Mac - Windows Development Preview" if windows_preview else "Vidrick Mac Preview"
+    if windows_preview:
+        title = "Vidrick Mac - Windows Development Preview"
+    else:
+        title = "Vidrick Mac - Private Test Build" if is_bundled_mac() else "Vidrick Mac Preview"
     root.title(f"{title} - {__version__}")
     ui = None
     try:
-        library = Path(__file__).resolve().parents[1] / "local-history" / (
+        library = app_data_root() / "local-history" / (
             "windows-preview" if windows_preview else "mac")
         ui = PreviewUI(root, windows_preview=windows_preview, tk=tk, ttk=ttk, filedialog=filedialog,
                        history_root=library)

@@ -20,6 +20,7 @@ import threading
 from typing import Callable
 import wave
 
+from .environment import app_data_root, is_bundled_mac, prepare_bundled_data_directory
 from .transcript_io import MAX_TRANSCRIPT_BYTES
 
 
@@ -153,10 +154,19 @@ def _stop_process(process: subprocess.Popen) -> None:
         raise TranscriptionCleanupError(f"Could not confirm that the local engine stopped: {error}") from error
 
 
+def _prepare_runtime_root() -> Path:
+    if is_bundled_mac():
+        return prepare_bundled_data_directory(app_data_root() / "runtime-output")
+    RUNTIME_ROOT.mkdir(mode=0o700, parents=False, exist_ok=True)
+    if RUNTIME_ROOT.is_symlink() or not RUNTIME_ROOT.is_dir():
+        raise TranscriptionError("The local runtime-output folder must be a regular directory.")
+    return RUNTIME_ROOT
+
+
 @contextmanager
-def _job_directory():
+def _job_directory(root: Path | None = None):
     """Clean a finished job, retaining evidence if a child might still be alive."""
-    directory = Path(tempfile.mkdtemp(prefix="job-", dir=RUNTIME_ROOT))
+    directory = Path(tempfile.mkdtemp(prefix="job-", dir=RUNTIME_ROOT if root is None else root))
     preserve = False
     try:
         yield directory
@@ -345,10 +355,8 @@ def run_transcription(spec: JobSpec, cancel_event: threading.Event,
         converter = _regular_path(spec.converter, "ffmpeg executable", executable=True)
     _check_cancelled(cancel_event)
     try:
-        RUNTIME_ROOT.mkdir(mode=0o700, parents=False, exist_ok=True)
-        if RUNTIME_ROOT.is_symlink() or not RUNTIME_ROOT.is_dir():
-            raise TranscriptionError("The local runtime-output folder must be a regular directory.")
-        with _job_directory() as directory:
+        runtime_root = _prepare_runtime_root()
+        with _job_directory(runtime_root) as directory:
             audio = recording
             if converter is not None:
                 emit(Progress("preparing", "Preparing audio…"))

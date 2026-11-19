@@ -1,4 +1,4 @@
-"""Bounded, verified setup downloads and private project-local storage.
+"""Bounded, verified setup downloads and private local storage.
 
 This module does no work on import. Callers explicitly start a setup job and own
 the platform guard; tests supply synthetic responses and private project roots.
@@ -21,8 +21,9 @@ from urllib.error import URLError
 from urllib.parse import urlsplit
 from urllib.request import HTTPRedirectHandler, HTTPSHandler, Request, build_opener
 
+from .environment import app_data_root, is_bundled_mac, prepare_bundled_data_directory
 
-SETUP_ROOT = Path(__file__).resolve().parents[1] / "local-setup"
+
 CHUNK_BYTES = 64 * 1024
 NETWORK_TIMEOUT = 10
 SELECTION_LIMIT = 32 * 1024
@@ -101,6 +102,8 @@ def _managed_path(path: Path, root: Path) -> Path:
     if ".." in path.parts or ".." in root.parts:
         raise SetupError("Setup paths cannot contain parent-directory traversal.")
     path, root = path.absolute(), root.absolute()
+    if is_bundled_mac() and not root.is_relative_to(app_data_root()):
+        raise SetupError("Setup files must stay inside Vidrick's Application Support directory.")
     try:
         path.relative_to(root)
     except ValueError as error:
@@ -111,6 +114,8 @@ def _managed_path(path: Path, root: Path) -> Path:
 
 def _private_directory(path: Path, root: Path) -> Path:
     path = _managed_path(path, root)
+    if is_bundled_mac():
+        return prepare_bundled_data_directory(path)
     root = Path(root).absolute()
     if not root.parent.is_dir():
         raise SetupError("The setup folder's parent must already exist.")
@@ -212,8 +217,23 @@ def _verified_existing(path: Path, artifact: Artifact, cancel: Event, emit: Emit
     return count == artifact.size and digest.hexdigest().lower() == artifact.sha256.lower()
 
 
+def setup_data_root() -> Path:
+    return app_data_root() / "local-setup"
+
+
+def _download_context() -> ssl.SSLContext:
+    if not is_bundled_mac():
+        return ssl.create_default_context()
+    try:
+        # Finder users haven't run python.org's certificate installation script.
+        import certifi
+        return ssl.create_default_context(cafile=certifi.where())
+    except (ImportError, OSError) as error:
+        raise SetupError("This Vidrick build could not load its HTTPS certificates. Reinstall the app and try again.") from error
+
+
 def download_artifact(artifact: Artifact, destination: Path, cancel: Event, emit: Emit,
-                      *, root: Path = SETUP_ROOT) -> Path:
+                      *, root: Path | None = None) -> Path:
     """Fetch a pinned artifact with verified TLS, bounded size, and atomic commit.
 
     Redirects are checked before following them. An older file survives any
@@ -223,6 +243,7 @@ def download_artifact(artifact: Artifact, destination: Path, cancel: Event, emit
     try:
         _check_cancel(cancel)
         _validate_artifact(artifact)
+        root = setup_data_root() if root is None else root
         destination = _managed_path(destination, root)
         if destination == Path(root).absolute():
             raise SetupError("An artifact must have its own file name.")
@@ -233,7 +254,7 @@ def download_artifact(artifact: Artifact, destination: Path, cancel: Event, emit
         digest = hashlib.sha256()
         count = 0
         emit(SetupProgress("downloading", f"Downloading {artifact.name}", 0))
-        opener = build_opener(_VerifiedRedirects(), HTTPSHandler(context=ssl.create_default_context()))
+        opener = build_opener(_VerifiedRedirects(), HTTPSHandler(context=_download_context()))
         request = Request(artifact.url, headers={"User-Agent": "Vidrick-Mac-Development-Setup/1", "Accept-Encoding": "identity"})
         _check_cancel(cancel)
         descriptor, temporary_name = tempfile.mkstemp(prefix=f".{destination.name}.", suffix=".part", dir=destination.parent)
@@ -303,7 +324,7 @@ def _archive_path(name: str) -> Path:
     return Path(*relative.parts)
 
 
-def safe_extract_tar(archive: Path, destination: Path, cancel: Event, *, root: Path = SETUP_ROOT,
+def safe_extract_tar(archive: Path, destination: Path, cancel: Event, *, root: Path | None = None,
                      max_bytes: int = 1024 * 1024 * 1024, max_files: int = 100_000,
                      include: Callable[[str], bool] | None = None) -> Path:
     """Extract only ordinary files/directories, with no links or special entries.
@@ -316,6 +337,7 @@ def safe_extract_tar(archive: Path, destination: Path, cancel: Event, *, root: P
     created: list[Path] = []
     try:
         _check_cancel(cancel)
+        root = setup_data_root() if root is None else root
         destination = _managed_path(destination, root)
         if destination == Path(root).absolute():
             raise SetupError("Extract into a dedicated setup subfolder.")
@@ -417,9 +439,10 @@ def _validate_selection(selection: dict) -> dict[str, str]:
     return result
 
 
-def load_selection(root: Path = SETUP_ROOT) -> dict[str, str]:
+def load_selection(root: Path | None = None) -> dict[str, str]:
     """Load optional preferences without creating folders or repairing files."""
     try:
+        root = setup_data_root() if root is None else root
         path = _managed_path(Path(root) / "selection.json", root)
         if _regular_file(path).st_size > SELECTION_LIMIT:
             return {}
@@ -432,13 +455,14 @@ def load_selection(root: Path = SETUP_ROOT) -> dict[str, str]:
         return {}
 
 
-def save_selection(selection: dict[str, str], root: Path = SETUP_ROOT) -> None:
+def save_selection(selection: dict[str, str], root: Path | None = None) -> None:
     """Atomically store validated setup paths; never open the selected tools."""
     temporary = None
     try:
         payload = (json.dumps(_validate_selection(selection), ensure_ascii=False, indent=2) + "\n").encode("utf-8")
         if len(payload) > SELECTION_LIMIT:
             raise SetupError("Saved setup settings are too large.")
+        root = setup_data_root() if root is None else root
         folder = _private_directory(Path(root), root)
         path = _managed_path(folder / "selection.json", root)
         if path.exists():

@@ -1,14 +1,16 @@
-"""Read-only starter checks, with no GUI, network, or filesystem writes."""
+"""Read-only preflight and local storage paths for source and installed builds."""
 
 from dataclasses import dataclass
 from importlib.util import find_spec
 from pathlib import Path
 import platform
+import stat
 import sys
 
 
 MIN_PYTHON = (3, 11)
 DATA_DIRECTORY_NAME = "Vidrick AI Transcriber Mac Preview"
+SOURCE_ROOT = Path(__file__).resolve().parents[1]
 
 
 @dataclass(frozen=True)
@@ -59,9 +61,40 @@ def inspect_environment() -> Environment:
 
 
 def preview_data_directory(home: Path | None = None) -> Path:
-    """Calculate a future Mac-only path; never create or read that directory."""
+    """Calculate the installed app's data path without creating it."""
     base = Path.home() if home is None else Path(home)
     return base / "Library" / "Application Support" / DATA_DIRECTORY_NAME
+
+
+def is_bundled_mac() -> bool:
+    return bool(getattr(sys, "frozen", False) and platform.system() == "Darwin"
+                and platform.machine().strip().lower() == "arm64")
+
+
+def app_data_root() -> Path:
+    """Keep installed app data outside the bundle and source data in the project."""
+    return preview_data_directory() if is_bundled_mac() else SOURCE_ROOT
+
+
+def prepare_bundled_data_directory(path: Path) -> Path:
+    """Create a private directory under Application Support without following links."""
+    home = Path.home()
+    path = Path(path)
+    if (not is_bundled_mac() or not path.is_absolute() or ".." in path.parts
+            or not path.is_relative_to(preview_data_directory(home))):
+        raise OSError("This folder is outside Vidrick's Application Support directory.")
+    for component in reversed((path, *path.parents)):
+        try:
+            metadata = component.lstat()
+        except FileNotFoundError:
+            if component == home or not component.is_relative_to(home):
+                raise
+            component.mkdir(mode=0o700, exist_ok=True)
+            metadata = component.lstat()
+        if (not stat.S_ISDIR(metadata.st_mode)
+                or getattr(metadata, "st_file_attributes", 0) & getattr(stat, "FILE_ATTRIBUTE_REPARSE_POINT", 0x400)):
+            raise OSError(f"Vidrick data needs a regular directory without links: {component}")
+    return path
 
 
 def format_report(environment: Environment, *, windows_preview: bool = False) -> str:

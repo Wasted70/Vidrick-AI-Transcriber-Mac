@@ -2,9 +2,9 @@ VIDRICK MAC - APPLE SILICON STARTER
 Prototype 0.1.0-dev | Started October 14, 2026
 
 WHAT THIS IS
-A small, independent foundation for an M-series Mac version. It is not a
-Mac release of Vidrick 4.3.1 or an installer. The local development pipeline
-is implemented, but actual inference and native Mac behavior are unverified.
+A small, independent development preview for M-series Macs. It includes the
+local transcription pipeline and a build recipe for a private test app and
+drag-to-Applications disk image. Native Mac behavior still needs testing.
 Windows remains the primary product. Nothing here changes the Windows app.
 
 WHAT WORKS AT THIS STAGE
@@ -37,7 +37,8 @@ WHAT WORKS AT THIS STAGE
   choices after an unexpected close. Manually saved files remain separate.
 - Clearly labeled Insights and About & Updates placeholder panels.
 - A separately labeled Windows development preview of that same small UI.
-- A separate future Mac-preview data path. It is calculated, not created.
+- A Finder launch entry and a native build recipe for Vidrick.app and a .dmg.
+- User data for the installed app lives in Application Support.
 - Standard-library unit tests; no pip install or AI dependencies required.
 
 WHAT DOES NOT HAPPEN
@@ -49,7 +50,7 @@ starts transcription, saves setup preferences, or reads selected recordings.
 The Editor reads and writes the .txt files you explicitly open or save, and
 writes .srt/.vtt files when you choose Export. History also keeps finished
 transcript text and segment timings locally, and autosave keeps recovery drafts
-in the project's private local library. It never copies source recordings.
+in a private local library. It never copies source recordings.
 There are no bundled models, production account connections, license
 requests, analytics, or updates. No Windows source,
 settings, credentials, release files, or dependencies were copied here.
@@ -180,9 +181,49 @@ https://www.w3.org/TR/webvtt1/
 https://www.loc.gov/preservation/digital/formats/fdd/fdd000569.shtml
 
 DEVELOPMENT STATUS
-GitHub holds ongoing development updates. Friend testing is deferred until
-the owner says the app is ready. The following Mac setup instructions are
-available for that later stage; a push is not a signed release or test invite.
+GitHub holds source updates. The installer recipe is for a private test build.
+Developer ID signing, notarization, and product licensing are deferred.
+
+BUILD THE PRIVATE MAC TEST APP AND DISK IMAGE
+On an Apple Silicon Mac with native arm64 Python 3.11-3.15, Tk, and Apple's
+command line tools, run this in a desktop session from the project folder:
+
+  python3 -E -B packaging/build_macos.py
+
+The build installs its pinned packaging dependencies into an isolated build
+environment in the project. It bundles Python and Tk into a windowed app
+and checks that the bundle can load Tk and its HTTPS certificates before it
+creates a disk image with Vidrick.app and a link to Applications. The
+builder prints the resulting paths under dist/mac-preview-*/. You can also
+open the locally built Vidrick.app directly on the build Mac for the first
+smoke test. Native build and install validation are still pending.
+
+TEST THE INSTALLED APP FROM FINDER
+1. Open Vidrick-Mac-Preview-arm64.dmg, drag Vidrick into Applications,
+   eject the disk image, and double-click Vidrick in Applications.
+2. Open Transcribe > Engine & Models > Easy setup. Select Balanced (Base)
+   and click Set Up on This Mac. If prompted, click Install Apple tools,
+   finish Apple's installer, then retry setup. The app compiles the local
+   transcription tools and downloads the selected model.
+3. Select a short sample recording and click Transcribe selected file.
+   Edit the result, save a .txt copy, and export SRT and VTT subtitles.
+4. Quit and reopen Vidrick from Applications. Check that the model is
+   still selected, the result opens from History, and a second job can be
+   cancelled. Report any setup errors from Details.
+
+The Finder workflow uses the bundled Python and Tk. Installed models, setup
+settings, History, and job files live under this per-user folder:
+
+  ~/Library/Application Support/Vidrick AI Transcriber Mac Preview/
+
+The source preview has its own data folders. If you already used that preview,
+use Save As or Export there to keep work you want to take to the installed app.
+
+A disk image downloaded on another Mac may be blocked by Gatekeeper while
+Developer ID signing and notarization are deferred. Check the launch on the
+intended test Mac. If macOS blocks it, report the exact message and leave
+the Mac's security settings in place.
+https://support.apple.com/en-us/102445
 
 RUN ON AN M-SERIES MAC WHEN READY
 The Mac source lives in its own GitHub repository:
@@ -230,8 +271,8 @@ https://docs.python.org/3/library/tkinter.html
 https://docs.python.org/3/using/mac.html
 
 Do not change system Python or disable macOS security protections for this
-preview. It is not an app bundle, so it cannot yet be installed by dragging
-an app to Applications. No minimum macOS release has been validated yet.
+preview. The commands above run the source copy. No minimum macOS release
+has been validated yet.
 
 FEEDBACK FROM MAC TESTING
 Include the commit from `git rev-parse --short HEAD`, the --check output,
@@ -264,9 +305,8 @@ Use the explicit --windows-preview mode instead. That flag does not make the
 default Mac preflight pass, and it is refused on macOS/Linux.
 
 LOCAL TRANSCRIPTION DEVELOPMENT WORKFLOW
-This is a development integration, not a licensed product release. No friend
-testing, packaging, model distribution, or licensing integration is enabled
-by a push. Production licensing must be integrated before distribution.
+This workflow runs the development integration. Public distribution needs
+Vidrick's licensing and macOS distribution signing in place.
 
 On a native arm64 Mac, open Transcribe > Engine & Models. Easy setup
 prepares whisper.cpp and FFmpeg and downloads the selected multilingual model.
@@ -418,7 +458,7 @@ validation; Windows tests do not establish those guarantees.
 SEPARATION FROM WINDOWS
 Windows reference: C:\Vidrick_AI_Transcriber_4.3 - Main
 Mac work:          C:\Vidrick_AI_Transcriber_Mac
-Future data path:  ~/Library/Application Support/Vidrick AI Transcriber Mac Preview
+Installed data:    ~/Library/Application Support/Vidrick AI Transcriber Mac Preview
 
 There is no live source link, automatic synchronization, or dependency on the
 Windows folder. Future shared fixes should be deliberately ported and tested
@@ -431,5 +471,7 @@ media, real progress, cancellation during conversion/model loading/inference,
 and saving the final transcript. Check SRT/VTT export from the Editor, reopened
 History results, and recovered drafts. Check that cancelling or closing leaves no
 child process or temporary job files. Also check no-speech and failure recovery.
-Licensing integration, packaging, signing, notarization, hosted builds, GPU
-acceleration, and packaged app releases are separately scoped later work.
+Also build the private installer and verify Finder launch, drag to Applications,
+setup, and persistence on an Apple Silicon Mac. Licensing integration,
+Developer ID signing, notarization, hosted builds, GPU acceleration, and
+public app releases are separately scoped work.

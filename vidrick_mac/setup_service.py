@@ -1,4 +1,4 @@
-"""User-requested, project-local Apple Silicon transcription tool setup.
+"""User-requested, local Apple Silicon transcription tool setup.
 
 Only pinned, hash-verified sources and models are downloaded. Source builds use
 Apple's already-installed command line tools; this module never installs system
@@ -22,13 +22,13 @@ import threading
 import time
 from typing import Callable
 
+from .environment import app_data_root, is_bundled_mac, prepare_bundled_data_directory
 from .setup_io import (
-    Artifact, SETUP_ROOT, SetupCancelled, SetupCleanupError, SetupError, SetupProgress,
-    download_artifact, safe_extract_tar, _managed_path, _open_read,
+    Artifact, SetupCancelled, SetupCleanupError, SetupError, SetupProgress,
+    download_artifact, safe_extract_tar, setup_data_root, _managed_path, _open_read,
 )
 
 
-PROJECT_ROOT = Path(__file__).resolve().parents[1]
 TOOLSET_ID = "whisper-d1be6fde-ffmpeg-9.0.2-arm64-v1"
 MODEL_REVISION = "5359861c739e955e79d9a303bcbc70fb988958b1"
 WHISPER = Artifact(
@@ -93,18 +93,23 @@ def _native_guard() -> None:
 
 def _safe_path(path: Path, root: Path) -> Path:
     """Reject escapes and symlink parents before any managed write or removal."""
-    path = Path(os.path.abspath(path))
-    root = Path(os.path.abspath(root))
+    path, root = Path(path), Path(root)
+    if ".." in path.parts or ".." in root.parts:
+        raise SetupError("Setup paths cannot contain parent-directory traversal.")
+    path, root = path.absolute(), root.absolute()
     try:
-        root.relative_to(PROJECT_ROOT)
+        root.relative_to(app_data_root())
         path.relative_to(root)
     except ValueError as error:
-        raise SetupError("Setup files must stay inside this Mac project.") from error
+        location = "Vidrick's Application Support directory" if is_bundled_mac() else "this Mac project"
+        raise SetupError(f"Setup files must stay inside {location}.") from error
     return _managed_path(path, root)
 
 
 def _mkdir(path: Path, root: Path) -> Path:
     path = _safe_path(path, root)
+    if is_bundled_mac():
+        return prepare_bundled_data_directory(path)
     path.mkdir(parents=True, exist_ok=True, mode=0o700)
     if not path.is_dir():
         raise SetupError("A setup folder is not a directory.")
@@ -203,8 +208,8 @@ def _build_environment(temporary: Path) -> dict:
 
 
 def _apple_tools(directory: Path, cancel: threading.Event) -> str:
-    temporary = _mkdir(directory / "tmp", PROJECT_ROOT)
-    _mkdir(directory / "home", PROJECT_ROOT)
+    temporary = _mkdir(directory / "tmp", directory)
+    _mkdir(directory / "home", directory)
     environment = _build_environment(temporary)
     try:
         _run_process(["/usr/bin/xcode-select", "-p"], directory, cancel,
@@ -375,13 +380,14 @@ def _build_tools(root: Path, work: Path, cancel: threading.Event,
 
 
 def run_setup(model_id: str, cancel: threading.Event,
-              emit: Callable[[SetupProgress], None], *, root: Path = SETUP_ROOT) -> dict:
+              emit: Callable[[SetupProgress], None], *, root: Path | None = None) -> dict:
     """Return verified local paths; the UI commits them after accepting success."""
     _native_guard()
     _check_cancelled(cancel)
     if model_id not in MODELS:
         raise SetupError("Choose one of the available transcription models.")
-    root = _safe_path(Path(root), Path(root))
+    root = setup_data_root() if root is None else Path(root)
+    root = _safe_path(root, root)
     work = None
     preserve = False
     try:
