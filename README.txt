@@ -199,6 +199,9 @@ open the locally built Vidrick.app directly on the build Mac for the first
 smoke test. Native build and install validation are still pending.
 
 TEST THE INSTALLED APP FROM FINDER
+The standalone instructions to send with the private disk image are in
+MAC_TESTING_GUIDE.md.
+
 1. Open Vidrick-Mac-Preview-arm64.dmg, drag Vidrick into Applications,
    eject the disk image, and double-click Vidrick in Applications.
 2. Open Transcribe > Engine & Models > Easy setup. Select Balanced (Base)
