@@ -4,7 +4,7 @@ Thanks for helping test Vidrick. Use this guide once you receive `Vidrick-Mac-Pr
 
 ## Install and open Vidrick
 
-1. Double-click `Vidrick-Mac-Preview-arm64.dmg` in Finder.
+1. Sign in to GitHub and download `Vidrick-Mac-Preview-arm64.dmg` from the link I send you. Double-click it in Finder and enter the disk image password if prompted.
 2. Drag **Vidrick** onto the **Applications** shortcut in the disk image window.
 3. Eject the disk image. Open **Applications** in Finder and double-click **Vidrick**.
 

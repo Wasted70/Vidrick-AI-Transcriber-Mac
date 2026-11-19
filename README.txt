@@ -198,6 +198,11 @@ builder prints the resulting paths under dist/mac-preview-*/. You can also
 open the locally built Vidrick.app directly on the build Mac for the first
 smoke test. Native build and install validation are still pending.
 
+The manual Private Mac Preview workflow can also run the build on GitHub's
+Apple Silicon runner. It requires a one-time RSA public key so only the
+person holding the matching private key can read the disk image password.
+It uploads a password-protected disk image as an expiring Actions download.
+
 TEST THE INSTALLED APP FROM FINDER
 The standalone instructions to send with the private disk image are in
 MAC_TESTING_GUIDE.md.

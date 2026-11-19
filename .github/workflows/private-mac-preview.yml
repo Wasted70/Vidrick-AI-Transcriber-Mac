@@ -1,0 +1,103 @@
+name: Build private Mac preview
+
+on:
+  workflow_dispatch:
+    inputs:
+      unlock_public_key:
+        description: Base64-encoded RSA public key PEM. Supply only the public key.
+        required: true
+        type: string
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    if: github.repository == 'Wasted70/Vidrick-AI-Transcriber-Mac' && github.ref == 'refs/heads/main'
+    runs-on: macos-15
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/setup-python@6d4fd22b20465ccc0f7354476588e8df7c9ca0e0 # v7.1.0
+        with:
+          python-version: '3.13'
+          architecture: arm64
+      - name: Validate the unlock public key
+        env:
+          PUBLIC_KEY_B64: ${{ inputs.unlock_public_key }}
+        run: |
+          python -E -B - <<'PY'
+          import base64
+          import os
+          from pathlib import Path
+          import re
+          import subprocess
+
+          encoded = os.environ['PUBLIC_KEY_B64']
+          if not 1 <= len(encoded) <= 4096:
+              raise SystemExit('Supply a base64-encoded RSA public key PEM.')
+          try:
+              pem = base64.b64decode(encoded, validate=True)
+          except ValueError:
+              raise SystemExit('The public key is not valid base64.') from None
+          if not re.fullmatch(rb'-----BEGIN PUBLIC KEY-----\r?\n[A-Za-z0-9+/=\r\n]+\r?\n-----END PUBLIC KEY-----\r?\n?', pem):
+              raise SystemExit('Supply a PEM with a BEGIN PUBLIC KEY header.')
+          parsed = subprocess.run(['/usr/bin/openssl', 'rsa', '-pubin', '-text', '-noout'],
+                                  input=pem, capture_output=True)
+          if parsed.returncode or not re.search(rb'Public-Key: \((2048|3072|4096) bit\)', parsed.stdout):
+              raise SystemExit('The public key must be a 2048, 3072, or 4096 bit RSA key.')
+          (Path(os.environ['RUNNER_TEMP']) / 'vidrick-unlock-public.pem').write_bytes(pem)
+          PY
+      - name: Build and check Vidrick.app
+        run: python -E -B packaging/build_macos.py
+      - name: Encrypt and check the disk image
+        id: image
+        shell: bash
+        run: |
+          set +x
+          set -euo pipefail
+          umask 077
+          shopt -s nullglob
+          source=(dist/mac-preview-*/Vidrick-Mac-Preview-arm64.dmg)
+          if [[ ${#source[@]} -ne 1 ]]; then
+            echo 'Expected exactly one built disk image.' >&2
+            exit 1
+          fi
+          work=$(mktemp -d "$RUNNER_TEMP/vidrick-image.XXXXXX")
+          image="$work/Vidrick-Mac-Preview-arm64.dmg"
+          mountpoint="$work/mount"
+          mkdir "$mountpoint"
+          trap '/usr/bin/hdiutil detach "$mountpoint" >/dev/null 2>&1 || true' EXIT
+
+          password=$(/usr/bin/openssl rand -hex 16)
+          [[ "$password" =~ ^[[:xdigit:]]{32}$ ]]
+          printf '::add-mask::%s\n' "$password"
+          envelope=$(printf '%s' "$password" | /usr/bin/openssl pkeyutl -encrypt -pubin \
+            -inkey "$RUNNER_TEMP/vidrick-unlock-public.pem" -pkeyopt rsa_padding_mode:oaep \
+            -pkeyopt rsa_oaep_md:sha256 -pkeyopt rsa_mgf1_md:sha256 | /usr/bin/openssl base64 -A)
+          [[ -n "$envelope" ]]
+
+          printf '%s\0' "$password" | /usr/bin/hdiutil convert "${source[0]}" \
+            -format UDZO -encryption AES-256 -stdinpass -o "$image"
+          /usr/bin/hdiutil isencrypted "$image" | grep -i '^encrypted: yes[[:space:]]*$'
+          printf '%s\0' "$password" | /usr/bin/hdiutil verify "$image" -stdinpass
+          printf '%s\0' "$password" | /usr/bin/hdiutil attach "$image" \
+            -readonly -nobrowse -noautoopen -mountpoint "$mountpoint" -stdinpass
+          unset password
+
+          [[ -d "$mountpoint/Vidrick.app" && -x "$mountpoint/Vidrick.app/Contents/MacOS/Vidrick" ]]
+          [[ -L "$mountpoint/Applications" && $(/usr/bin/readlink "$mountpoint/Applications") == /Applications ]]
+          /usr/bin/codesign --verify --deep --strict "$mountpoint/Vidrick.app"
+          /usr/bin/hdiutil detach "$mountpoint"
+          trap - EXIT
+          printf 'VIDRICK_UNLOCK_ENVELOPE=%s\n' "$envelope"
+          printf 'path=%s\n' "$image" >> "$GITHUB_OUTPUT"
+      - name: Upload the encrypted DMG
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          path: ${{ steps.image.outputs.path }}
+          archive: false
+          if-no-files-found: error
+          retention-days: 14
